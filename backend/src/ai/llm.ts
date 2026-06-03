@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { env } from "../config/env";
 
 type ChatMessageInput = {
-  role: "system" | "user" | "assistant";
+  role: "system" | "developer" | "user" | "assistant";
   content: string;
 };
 

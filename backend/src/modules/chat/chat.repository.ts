@@ -1,4 +1,4 @@
-﻿import { prisma } from "../../db/prisma";
+import { prisma } from "../../db/prisma";
 
 export class ChatRepository {
   // Handles saveMessage logic.
@@ -9,12 +9,13 @@ export class ChatRepository {
   }
 
   // Handles listSessionMessages logic.
-  listSessionMessages(userId: string, sessionId: string, limit = 20) {
-    return prisma.chatMessage.findMany({
+  async listSessionMessages(userId: string, sessionId: string, limit = 20) {
+    const messages = await prisma.chatMessage.findMany({
       where: { userId, sessionId },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
       take: limit
     });
+    return messages.reverse();
   }
 
   // Handles listSessions logic.
@@ -24,6 +25,23 @@ export class ChatRepository {
       where: { userId },
       _max: { createdAt: true },
       orderBy: { _max: { createdAt: "desc" } }
+    });
+  }
+
+  // Handles listKnowledgeEmbeddings logic.
+  listKnowledgeEmbeddings(userId: string) {
+    return prisma.embedding.findMany({
+      where: {
+        userId,
+        OR: [
+          { sourceType: "note", noteId: { not: null } },
+          { sourceType: "file", fileId: { not: null } }
+        ]
+      },
+      include: {
+        note: true,
+        file: true
+      }
     });
   }
 }

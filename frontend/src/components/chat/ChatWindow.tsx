@@ -17,7 +17,7 @@ export const ChatWindow = ({ messages }: Props) => (
         className={`rounded-lg p-3 ${m.role === "user" ? "bg-slate-100 ml-8" : "bg-teal-50 mr-8"}`}
       >
         <p className="text-xs uppercase text-slate-500 mb-1">{m.role}</p>
-        <p>{m.content}</p>
+        <p className="whitespace-pre-wrap">{m.content}</p>
       </div>
     ))}
   </div>
