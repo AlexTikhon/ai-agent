@@ -17,12 +17,14 @@ const MAX_CONTEXT_SOURCES = 6;
 const MIN_CONTEXT_SCORE = 0.05;
 const EXCERPT_CHARS = 900;
 
+// Handles excerpt logic.
 const excerpt = (value: string | null | undefined) =>
   (value || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, EXCERPT_CHARS);
 
+// Handles formatContext logic.
 const formatContext = (sources: RagSource[]) =>
   sources
     .map(
@@ -34,6 +36,7 @@ const formatContext = (sources: RagSource[]) =>
     )
     .join("\n\n");
 
+// Handles formatSources logic.
 const formatSources = (sources: RagSource[]) => {
   if (sources.length === 0) return "";
 

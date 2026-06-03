@@ -1,6 +1,7 @@
-﻿import { prisma } from "../../db/prisma";
+import { prisma } from "../../db/prisma";
 
 export class FilesRepository {
+  // Handles create logic.
   create(
     userId: string,
     fileName: string,

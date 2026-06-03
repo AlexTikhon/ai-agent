@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useAuthStore } from "../store/auth.store";
 
 type WsHandler = (payload: unknown) => void;
@@ -14,6 +14,7 @@ export const useWs = (onMessage: WsHandler) => {
     const ws = new WebSocket(`${baseUrl}?token=${token}`);
     socketRef.current = ws;
 
+    // Handles websocket message parsing logic.
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
@@ -23,6 +24,7 @@ export const useWs = (onMessage: WsHandler) => {
       }
     };
 
+    // Handles websocket cleanup logic.
     return () => {
       ws.close();
       socketRef.current = null;

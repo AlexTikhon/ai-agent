@@ -25,6 +25,7 @@ export const ChatPage = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["chat", sessionId] })
   });
 
+  // Handles onWsMessage logic.
   const onWsMessage = useCallback((payload: unknown) => {
     const data = payload as { type?: string; sessionId?: string; chunk?: string };
     if (data.sessionId !== sessionId) return;
@@ -53,12 +54,14 @@ export const ChatPage = () => {
     sendMutation.mutate(message);
   };
 
+  // Handles mergedMessages logic.
   const mergedMessages = useMemo(() => {
     const base = messagesQuery.data || [];
     if (!streamingReply) return base;
     return [...base, { id: "streaming", role: "assistant", content: streamingReply } as ChatMessage];
   }, [messagesQuery.data, streamingReply]);
 
+  // Handles session refresh logic.
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ["chat", sessionId] });
   }, [qc, sessionId]);

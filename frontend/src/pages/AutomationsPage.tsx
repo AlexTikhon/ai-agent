@@ -22,6 +22,7 @@ export const AutomationsPage = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["automations"] })
   });
 
+  // Handles onWsMessage logic.
   const onWsMessage = useCallback((payload: unknown) => {
     const data = payload as { type?: string; title?: string; at?: string };
     if (data.type !== "automation:executed") return;

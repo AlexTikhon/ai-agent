@@ -37,6 +37,7 @@ export const FilesPage = () => {
   const files = filesQuery.data || [];
   const canSearch = Boolean(query.trim()) && !searchMutation.isPending;
 
+  // Handles runSearch logic.
   const runSearch = () => {
     if (!canSearch) return;
     setHasSearched(true);

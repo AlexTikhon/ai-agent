@@ -1,6 +1,7 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import multer from "multer";
 import { authMiddleware } from "../../middleware/auth";
+import { uploadRateLimiter } from "../../middleware/rateLimit";
 import { FilesRepository } from "./files.repository";
 import { FilesService } from "./files.service";
 import { FilesController } from "./files.controller";
@@ -13,6 +14,6 @@ const controller = new FilesController(service);
 export const filesRouter = Router();
 
 filesRouter.use(authMiddleware);
-filesRouter.post("/upload", upload.single("file"), controller.upload);
+filesRouter.post("/upload", uploadRateLimiter, upload.single("file"), controller.upload);
 filesRouter.get("/", controller.list);
 filesRouter.get("/search", controller.search);

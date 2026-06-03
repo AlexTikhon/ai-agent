@@ -46,10 +46,12 @@ export const DashboardPage = () => {
     mutationFn: (nextLayout: Layout[]) => api.put("/dashboard/layout", { layout: nextLayout })
   });
 
+  // Handles saved layout hydration logic.
   useEffect(() => {
     if (layoutQuery.data?.layout) setLayout(layoutQuery.data.layout);
   }, [layoutQuery.data]);
 
+  // Handles onWsMessage logic.
   const onWsMessage = useCallback((payload: unknown) => {
     const data = payload as { type?: string; title?: string; at?: string };
     if (data.type === "automation:executed") {

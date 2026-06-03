@@ -38,6 +38,7 @@ export const NotesPage = () => {
   const notes = notesQuery.data || [];
   const canSearch = Boolean(searchQuery.trim()) && !searchMutation.isPending;
 
+  // Handles runSearch logic.
   const runSearch = () => {
     if (!canSearch) return;
     setHasSearched(true);

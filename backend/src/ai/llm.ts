@@ -13,14 +13,17 @@ const client = new OpenAI({
 const MAX_TEXT_INPUT_CHARS = 12000;
 const MAX_EMBED_INPUT_CHARS = 12000;
 
+// Handles compact logic.
 const compact = (text: string, maxChars = MAX_TEXT_INPUT_CHARS) => text.trim().slice(0, maxChars);
 
+// Handles getOutputText logic.
 const getOutputText = (output: { output_text?: string }) => {
   const text = output.output_text?.trim();
   if (!text) throw new Error("OpenAI returned an empty response");
   return text;
 };
 
+// Handles parseTags logic.
 const parseTags = (raw: string) => {
   const parsed = JSON.parse(raw) as { tags?: unknown };
   if (!Array.isArray(parsed.tags)) return [];
@@ -33,6 +36,7 @@ const parseTags = (raw: string) => {
 };
 
 export const llm = {
+  // Handles summarize logic.
   async summarize(text: string): Promise<string> {
     const input = compact(text);
     if (!input) return "";
@@ -47,6 +51,7 @@ export const llm = {
     return getOutputText(response);
   },
 
+  // Handles autoTags logic.
   async autoTags(text: string): Promise<string[]> {
     const input = compact(text);
     if (!input) return [];
@@ -80,6 +85,7 @@ export const llm = {
     return parseTags(getOutputText(response));
   },
 
+  // Handles embed logic.
   async embed(text: string): Promise<number[]> {
     const input = compact(text, MAX_EMBED_INPUT_CHARS) || "(empty)";
     const response = await client.embeddings.create({
@@ -90,6 +96,7 @@ export const llm = {
     return response.data[0]?.embedding ?? [];
   },
 
+  // Handles chat logic.
   async chat(messages: ChatMessageInput[]): Promise<string> {
     const input = messages.map((message) => ({
       role: message.role,

@@ -1,5 +1,6 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth";
+import { chatRateLimiter } from "../../middleware/rateLimit";
 import { ChatRepository } from "./chat.repository";
 import { ChatService } from "./chat.service";
 import { ChatController } from "./chat.controller";
@@ -15,4 +16,4 @@ export const chatRouter = Router();
 chatRouter.use(authMiddleware);
 chatRouter.get("/sessions", controller.listSessions);
 chatRouter.get("/sessions/:sessionId/messages", controller.listMessages);
-chatRouter.post("/messages", controller.sendMessage);
+chatRouter.post("/messages", chatRateLimiter, controller.sendMessage);

@@ -1,4 +1,4 @@
-﻿import fs from "fs/promises";
+import fs from "fs/promises";
 import path from "path";
 import pdfParse from "pdf-parse";
 import { env } from "../../config/env";
@@ -10,6 +10,7 @@ export class FilesService {
   // Handles constructor logic.
   constructor(private readonly repo: FilesRepository) {}
 
+  // Handles uploadPdf logic.
   async uploadPdf(
     userId: string,
     fileName: string,
