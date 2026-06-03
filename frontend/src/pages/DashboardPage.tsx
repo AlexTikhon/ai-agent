@@ -1,8 +1,9 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import GridLayout, { WidthProvider, Layout } from "react-grid-layout";
 import { api } from "../api/client";
 import { WidgetCard } from "../components/dashboard/WidgetCard";
+import { ErrorState, LoadingState, getErrorMessage } from "../components/ui/Status";
 import { useWs } from "../hooks/useWs";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -58,25 +59,49 @@ export const DashboardPage = () => {
   useWs(onWsMessage);
 
   const widgets = widgetsQuery.data;
+  const isLoading = widgetsQuery.isLoading || layoutQuery.isLoading;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-semibold">Real-time Dashboard</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold">Real-time Dashboard</h2>
+        {saveLayoutMutation.isPending && <span className="text-sm text-slate-500">Saving layout...</span>}
+      </div>
+
+      {isLoading && <LoadingState title="Loading dashboard" />}
+      {widgetsQuery.isError && (
+        <ErrorState title="Could not load widgets" message={getErrorMessage(widgetsQuery.error)} />
+      )}
+      {layoutQuery.isError && (
+        <ErrorState title="Could not load layout" message={getErrorMessage(layoutQuery.error)} />
+      )}
+      {saveLayoutMutation.isError && (
+        <ErrorState title="Could not save layout" message={getErrorMessage(saveLayoutMutation.error)} />
+      )}
+
       <AutoGrid
         className="layout"
         layout={layout}
         cols={6}
         rowHeight={80}
+        isDraggable={!layoutQuery.isLoading}
+        isResizable={!layoutQuery.isLoading}
         onLayoutChange={(next) => {
           setLayout(next);
-          saveLayoutMutation.mutate(next);
+          if (!layoutQuery.isLoading) saveLayoutMutation.mutate(next);
         }}
       >
         <div key="weather">
           <WidgetCard title="Weather">
-            <p>{widgets?.weather.location}</p>
-            <p className="text-2xl font-semibold">{widgets?.weather.temperatureC}C</p>
-            <p className="text-sm text-slate-600">{widgets?.weather.condition}</p>
+            {widgets ? (
+              <>
+                <p>{widgets.weather.location}</p>
+                <p className="text-2xl font-semibold">{widgets.weather.temperatureC}C</p>
+                <p className="text-sm text-slate-600">{widgets.weather.condition}</p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-600">Waiting for weather data.</p>
+            )}
           </WidgetCard>
         </div>
         <div key="stats">
@@ -88,29 +113,41 @@ export const DashboardPage = () => {
         </div>
         <div key="notes">
           <WidgetCard title="Recent notes">
-            <ul className="space-y-2 text-sm">
-              {(widgets?.recentNotes || []).map((note) => (
-                <li key={note.id}>{note.title}</li>
-              ))}
-            </ul>
+            {widgets?.recentNotes.length ? (
+              <ul className="space-y-2 text-sm">
+                {widgets.recentNotes.map((note) => (
+                  <li key={note.id}>{note.title}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-600">No recent notes.</p>
+            )}
           </WidgetCard>
         </div>
         <div key="files">
           <WidgetCard title="Recent files">
-            <ul className="space-y-2 text-sm">
-              {(widgets?.recentFiles || []).map((file) => (
-                <li key={file.id}>{file.fileName}</li>
-              ))}
-            </ul>
+            {widgets?.recentFiles.length ? (
+              <ul className="space-y-2 text-sm">
+                {widgets.recentFiles.map((file) => (
+                  <li key={file.id}>{file.fileName}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-600">No recent files.</p>
+            )}
           </WidgetCard>
         </div>
         <div key="events">
           <WidgetCard title="Live events">
-            <ul className="space-y-1 text-sm">
-              {events.map((event, idx) => (
-                <li key={`${event}-${idx}`}>{event}</li>
-              ))}
-            </ul>
+            {events.length ? (
+              <ul className="space-y-1 text-sm">
+                {events.map((event, idx) => (
+                  <li key={`${event}-${idx}`}>{event}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-600">No live events yet.</p>
+            )}
           </WidgetCard>
         </div>
       </AutoGrid>

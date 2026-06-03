@@ -1,17 +1,19 @@
-﻿import { FormEvent, useState } from "react";
+import { FormEvent, useState } from "react";
 
 type Props = {
+  isPending?: boolean;
   onUpload: (file: File) => Promise<void>;
 };
 
 // Handles FileUploader logic.
-export const FileUploader = ({ onUpload }: Props) => {
+export const FileUploader = ({ isPending = false, onUpload }: Props) => {
   const [file, setFile] = useState<File | null>(null);
+  const canSubmit = Boolean(file) && !isPending;
 
   // Handles submit logic.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!file) return;
+    if (!file || !canSubmit) return;
     await onUpload(file);
     setFile(null);
   };
@@ -24,10 +26,13 @@ export const FileUploader = ({ onUpload }: Props) => {
           className="block mt-1"
           type="file"
           accept="application/pdf"
+          disabled={isPending}
           onChange={(e) => setFile(e.target.files?.[0] || null)}
         />
       </div>
-      <button className="bg-accent text-white rounded-lg px-4 py-2">Upload</button>
+      <button className="bg-accent text-white rounded-lg px-4 py-2" disabled={!canSubmit}>
+        {isPending ? "Uploading..." : "Upload"}
+      </button>
     </form>
   );
 };

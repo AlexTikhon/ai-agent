@@ -1,8 +1,9 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { ChatWindow } from "../components/chat/ChatWindow";
 import { ChatInput } from "../components/chat/ChatInput";
+import { EmptyState, ErrorState, LoadingState, getErrorMessage } from "../components/ui/Status";
 import { useWs } from "../hooks/useWs";
 import { ChatMessage } from "../types/models";
 
@@ -11,6 +12,7 @@ export const ChatPage = () => {
   const qc = useQueryClient();
   const [sessionId] = useState("main");
   const [streamingReply, setStreamingReply] = useState("");
+  const [wsPending, setWsPending] = useState(false);
 
   const messagesQuery = useQuery({
     queryKey: ["chat", sessionId],
@@ -26,8 +28,12 @@ export const ChatPage = () => {
   const onWsMessage = useCallback((payload: unknown) => {
     const data = payload as { type?: string; sessionId?: string; chunk?: string };
     if (data.sessionId !== sessionId) return;
-    if (data.type === "chat:chunk") setStreamingReply((prev) => prev + (data.chunk || ""));
+    if (data.type === "chat:chunk") {
+      setWsPending(false);
+      setStreamingReply((prev) => prev + (data.chunk || ""));
+    }
     if (data.type === "chat:done") {
+      setWsPending(false);
       setStreamingReply("");
       qc.invalidateQueries({ queryKey: ["chat", sessionId] });
     }
@@ -40,6 +46,7 @@ export const ChatPage = () => {
     setStreamingReply("");
     const socket = wsRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
+      setWsPending(true);
       socket.send(JSON.stringify({ type: "chat:send", sessionId, message }));
       return;
     }
@@ -56,11 +63,24 @@ export const ChatPage = () => {
     qc.invalidateQueries({ queryKey: ["chat", sessionId] });
   }, [qc, sessionId]);
 
+  const isSending = sendMutation.isPending || wsPending || Boolean(streamingReply);
+
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-semibold">AI Chat</h2>
-      <ChatWindow messages={mergedMessages} />
-      <ChatInput onSend={onSend} />
+      {messagesQuery.isLoading && <LoadingState title="Loading conversation" />}
+      {messagesQuery.isError && (
+        <ErrorState title="Could not load chat" message={getErrorMessage(messagesQuery.error)} />
+      )}
+      {sendMutation.isError && (
+        <ErrorState title="Message failed" message={getErrorMessage(sendMutation.error)} />
+      )}
+      {messagesQuery.isSuccess && mergedMessages.length === 0 && (
+        <EmptyState title="No messages yet" message="Ask a question to start a workspace-aware chat." />
+      )}
+      {mergedMessages.length > 0 && <ChatWindow messages={mergedMessages} />}
+      {wsPending && <LoadingState title="Thinking" message="Retrieving workspace context and calling the LLM." />}
+      <ChatInput isPending={isSending} onSend={onSend} />
     </div>
   );
 };
