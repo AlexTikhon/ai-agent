@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Google Fonts ─────────────────────────────────────────────────────────── */
+/* Loaded via <link> in layout.tsx with font-display: swap */
+
+/* ── CSS Custom Properties (design tokens for non-Tailwind usage) ─────────── */
+:root {
+  /* Brand */
+  --color-primary:        #6535E0;
+  --color-primary-hover:  #7B54F0;
+  --color-primary-active: #5122C4;
+  --color-secondary:      #F5A800;
+
+  /* Backgrounds */
+  --color-bg-base:    #FDFCFB;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-subtle:  #F5F4F1;
+
+  /* Text */
+  --color-text-primary:   #28241E;
+  --color-text-secondary: #57524A;
+  --color-text-muted:     #79746A;
+
+  /* Borders */
+  --color-border-subtle:  #E8E6E1;
+  --color-border-default: #D6D3CC;
+  --color-border-brand:   #6535E0;
+
+  /* Radius */
+  --radius-sm:   6px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 4px 0 rgba(26,23,20,0.06);
+  --shadow-md: 0 8px 16px -4px rgba(26,23,20,0.12);
+  --shadow-brand: 0 8px 24px -4px rgba(101,53,224,0.25);
+}
+
+/* ── Base styles ─────────────────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-color: theme('colors.border.subtle');
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-bg-base text-text-primary font-body;
+    min-height: 100dvh;
+  }
+
+  /* Headings use the display (Fraunces) font */
+  h1, h2, h3 {
+    @apply font-display;
+  }
+
+  h4, h5, h6 {
+    @apply font-body font-semibold;
+  }
+
+  /* Remove default list styles when used as navigation */
+  nav ol,
+  nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Focus ring — accessible and branded */
+  :focus-visible {
+    outline: 2px solid #6535E0;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Reduce motion for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ── Component utility classes ───────────────────────────────────────────── */
+@layer components {
+  /* Skeleton loading shimmer */
+  .skeleton {
+    @apply bg-stone-200 animate-shimmer rounded;
+    background-size: 200% 100%;
+    background-image: linear-gradient(
+      90deg,
+      theme('colors.stone.200') 25%,
+      theme('colors.stone.100') 50%,
+      theme('colors.stone.200') 75%
+    );
+  }
+
+  /* Safe area padding for mobile devices */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Book reader typography */
+  .book-text {
+    @apply font-book text-lg leading-relaxed;
+    font-size: 1.125rem;
+    line-height: 1.8;
+  }
+
+  /* Overline label style */
+  .overline {
+    @apply text-xs font-bold uppercase tracking-widest text-text-muted;
+    letter-spacing: 0.12em;
+  }
+}

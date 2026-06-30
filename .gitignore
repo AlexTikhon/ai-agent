@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment files — keep only the example
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+out/
+
+# Next.js
+.next/
+next-env.d.ts
+
+# TypeScript incremental build files
+*.tsbuildinfo
+
+# Turbo
+.turbo/
+
+# Prisma generated client
+apps/api/node_modules/.prisma/
+apps/api/src/generated/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Docker volumes (local dev data)
+.docker-data/
+
+# pnpm
+.pnpm-store/
+
+# Vitest
+.vitest/
+
+# MinIO data (local dev)
+minio-data/

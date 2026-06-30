@@ -1,0 +1,544 @@
+// schema.prisma — StoryMe MVP Database Schema
+// Version: 1.0 | 2026-06-30
+// Source of truth: PRD.md, API_SPEC.md, BACKEND_DESIGN.md, ARCHITECTURE.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════
+
+enum UserPlan {
+  free
+  pay_per_book
+  family
+  annual
+  educator
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+// DB-stored values use the slash form ("he/him") to match API contract
+enum Pronouns {
+  he_him    @map("he/him")
+  she_her   @map("she/her")
+  they_them @map("they/them")
+}
+
+// Mirrors the pipeline state machine in BACKEND_DESIGN §3.12
+enum BookStatus {
+  created
+  char_build
+  story_plan
+  chapter_gen
+  illust_plan
+  image_gen
+  qa_review
+  layout
+  pdf_render
+  complete
+  failed
+  partial
+  cancelled
+}
+
+// All 9 pipeline steps — used in AgentLog and failedStep on Book
+enum AgentStep {
+  char_build
+  story_plan
+  chapter_gen
+  illust_plan
+  char_consistency
+  image_gen
+  qa_review
+  layout
+  pdf_render
+}
+
+enum AgentLogStatus {
+  success
+  error
+  retry
+}
+
+enum CreditReason {
+  book_creation
+  regen_page
+  refund_generation_failure
+  purchase
+  subscription_grant
+  promotional_grant
+  admin_adjustment
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  cancelled
+  trialing
+}
+
+enum UploadStatus {
+  pending
+  processing
+  complete
+  failed
+}
+
+enum ShareLinkMode {
+  preview_only
+  full_read
+}
+
+enum NotificationType {
+  generation_complete
+  generation_failed
+  birthday_reminder
+  subscription_renewed
+  payment_failed
+  marketing
+  newsletter
+}
+
+enum NotificationChannel {
+  email
+  push
+}
+
+// ═══════════════════════════════════════════
+// USER & AUTH
+// ═══════════════════════════════════════════
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  passwordHash  String?   @map("password_hash")
+  name          String?
+  locale        String    @default("en")
+  timezone      String    @default("UTC")
+  avatarUrl     String?   @map("avatar_url")
+
+  oauthProvider String?   @map("oauth_provider")
+  oauthId       String?   @map("oauth_id")
+
+  plan             UserPlan  @default(free)
+  credits          Int       @default(3)
+  creditsUpdatedAt DateTime? @map("credits_updated_at")
+
+  role          UserRole  @default(user)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  deactivatedAt DateTime? @map("deactivated_at")
+
+  notifyEmailOnCompletion Boolean @default(true)  @map("notify_email_on_completion")
+  notifyEmailMarketing    Boolean @default(false) @map("notify_email_marketing")
+  notifyPushOnCompletion  Boolean @default(true)  @map("notify_push_on_completion")
+  notifyBirthdayReminders Boolean @default(true)  @map("notify_birthday_reminders")
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  refreshTokens      RefreshToken[]
+  childProfiles      ChildProfile[]
+  uploads            Upload[]
+  books              Book[]
+  characterCards     CharacterCard[]
+  series             BookSeries[]
+  creditTransactions CreditTransaction[]
+  subscription       Subscription?
+  wizardDraft        WizardDraft?
+  userBookStates     UserBookState[]
+  notifications      Notification[]
+
+  @@index([email])
+  @@index([oauthProvider, oauthId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  family    String    @db.Uuid
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  ipAddress String?   @map("ip_address")
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@map("refresh_tokens")
+}
+
+// ═══════════════════════════════════════════
+// CHILD PROFILES
+// ═══════════════════════════════════════════
+
+model ChildProfile {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  name         String
+  nickname     String?
+  age          Int
+  pronouns     Pronouns  @default(they_them)
+  avatarConfig Json?     @map("avatar_config")
+  photoAssetId String?   @map("photo_asset_id") @db.Uuid
+  birthday     DateTime? @db.Date
+
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photo          Upload?       @relation(fields: [photoAssetId], references: [id], onDelete: SetNull)
+  books          Book[]
+  characterCards CharacterCard[]
+
+  @@index([userId])
+  @@map("child_profiles")
+}
+
+// ═══════════════════════════════════════════
+// UPLOADS
+// ═══════════════════════════════════════════
+
+model Upload {
+  id               String       @id @default(uuid()) @db.Uuid
+  userId           String       @map("user_id") @db.Uuid
+  status           UploadStatus @default(pending)
+  filename         String
+  contentType      String       @map("content_type")
+  fileSizeBytes    Int          @map("file_size_bytes")
+  r2Key            String       @map("r2_key")
+  processedR2Key   String?      @map("processed_r2_key")
+  processedUrl     String?      @map("processed_url")
+  failureReason    String?      @map("failure_reason")
+  imageWidth       Int?         @map("image_width")
+  imageHeight      Int?         @map("image_height")
+  presignExpiresAt DateTime?    @map("presign_expires_at")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  childProfiles    ChildProfile[]
+
+  @@index([userId])
+  @@map("uploads")
+}
+
+// ═══════════════════════════════════════════
+// BOOKS
+// ═══════════════════════════════════════════
+
+model Book {
+  id               String      @id @default(uuid()) @db.Uuid
+  userId           String      @map("user_id") @db.Uuid
+  childProfileId   String?     @map("child_profile_id") @db.Uuid
+
+  status           BookStatus  @default(created)
+  request          Json
+  title            String?
+  dedicationText   String?     @map("dedication_text")
+  pageCount        Int?        @map("page_count")
+
+  characterCard    Json?       @map("character_card")
+  storyPlan        Json?       @map("story_plan")
+  chapters         Json?
+  imagePrompts     Json?       @map("image_prompts")
+  qualityReport    Json?       @map("quality_report")
+  pageLayouts      Json?       @map("page_layouts")
+
+  coverUrl         String?     @map("cover_url")
+  pdfR2Key         String?     @map("pdf_r2_key")
+  pdfUrl           String?     @map("pdf_url")
+  printPdfR2Key    String?     @map("print_pdf_r2_key")
+  printPdfUrl      String?     @map("print_pdf_url")
+  previewPdfR2Key  String?     @map("preview_pdf_r2_key")
+  previewPdfUrl    String?     @map("preview_pdf_url")
+  socialCardUrl    String?     @map("social_card_url")
+
+  isPaid           Boolean     @default(false) @map("is_paid")
+  paidAt           DateTime?   @map("paid_at")
+  stripePaymentIntentId String? @map("stripe_payment_intent_id")
+
+  isPublic         Boolean     @default(false) @map("is_public")
+
+  generationTimeMs  Int?       @map("generation_time_ms")
+  totalCostUsd      Decimal?   @map("total_cost_usd") @db.Decimal(10, 6)
+  aiModelVersions   Json?      @map("ai_model_versions")
+  generatedDegraded Boolean    @default(false) @map("generated_degraded")
+
+  errorMessage     String?     @map("error_message")
+  retryCount       Int         @default(0) @map("retry_count")
+  failedStep       AgentStep?  @map("failed_step")
+
+  deletedAt        DateTime?   @map("deleted_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  childProfile     ChildProfile? @relation(fields: [childProfileId], references: [id], onDelete: SetNull)
+  pages            BookPage[]
+  shareLinks       ShareLink[]
+  creditTransactions CreditTransaction[]
+  userBookStates   UserBookState[]
+  agentLogs        AgentLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("books")
+}
+
+// ═══════════════════════════════════════════
+// BOOK PAGES
+// ═══════════════════════════════════════════
+
+model BookPage {
+  id               String    @id @default(uuid()) @db.Uuid
+  bookId           String    @map("book_id") @db.Uuid
+  pageNumber       Int       @map("page_number")
+
+  textContent      String?   @map("text_content")
+  readingLevel     Decimal?  @map("reading_level") @db.Decimal(3, 1)
+
+  imagePrompt      Json?     @map("image_prompt")
+  imageR2Key       String?   @map("image_r2_key")
+  imageUrl         String?   @map("image_url")
+  imageSeed        BigInt?   @map("image_seed")
+
+  layoutSpec       Json?     @map("layout_spec")
+
+  qaPassed         Boolean?  @map("qa_passed")
+  qaScores         Json?     @map("qa_scores")
+
+  textRegenCount   Int       @default(0) @map("text_regen_count")
+  imageRegenCount  Int       @default(0) @map("image_regen_count")
+
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  book             Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, pageNumber])
+  @@index([bookId])
+  @@map("book_pages")
+}
+
+// ═══════════════════════════════════════════
+// CHARACTER CARDS
+// ═══════════════════════════════════════════
+
+model CharacterCard {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  childProfileId   String?   @map("child_profile_id") @db.Uuid
+  name             String
+  card             Json
+  visualAnchor     String    @map("visual_anchor")
+  loraWeightsR2Key String?   @map("lora_weights_r2_key")
+  loraTrainedAt    DateTime? @map("lora_trained_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  childProfile     ChildProfile?  @relation(fields: [childProfileId], references: [id], onDelete: SetNull)
+  series           BookSeries[]
+
+  @@index([userId])
+  @@map("character_cards")
+}
+
+// ═══════════════════════════════════════════
+// BOOK SERIES
+// ═══════════════════════════════════════════
+
+model BookSeries {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  name            String
+  characterCardId String?   @map("character_card_id") @db.Uuid
+  bookIds         String[]  @default([]) @map("book_ids") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterCard   CharacterCard? @relation(fields: [characterCardId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("series")
+}
+
+// ═══════════════════════════════════════════
+// WIZARD DRAFTS
+// ═══════════════════════════════════════════
+
+model WizardDraft {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String?   @unique @map("user_id") @db.Uuid
+  guestSessionId String?   @unique @map("guest_session_id")
+  step           Int       @default(1)
+  completedSteps Int[]     @default([]) @map("completed_steps")
+  data           Json
+  childProfileId String?   @map("child_profile_id") @db.Uuid
+  expiresAt      DateTime  @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([guestSessionId])
+  @@map("wizard_drafts")
+}
+
+// ═══════════════════════════════════════════
+// SHARE LINKS
+// ═══════════════════════════════════════════
+
+model ShareLink {
+  id           String        @id @default(uuid()) @db.Uuid
+  bookId       String        @map("book_id") @db.Uuid
+  token        String        @unique
+  mode         ShareLinkMode @default(preview_only)
+  passwordHash String?       @map("password_hash")
+  expiresAt    DateTime?     @map("expires_at")
+  revokedAt    DateTime?     @map("revoked_at")
+  viewCount    Int           @default(0) @map("view_count")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  book         Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId])
+  @@index([token])
+  @@map("share_links")
+}
+
+// ═══════════════════════════════════════════
+// CREDIT TRANSACTIONS
+// ═══════════════════════════════════════════
+
+model CreditTransaction {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  bookId          String?      @map("book_id") @db.Uuid
+  amount          Int
+  balanceAfter    Int          @map("balance_after")
+  reason          CreditReason
+  stripePaymentId String?      @map("stripe_payment_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  user            User         @relation(fields: [userId], references: [id])
+  book            Book?        @relation(fields: [bookId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([bookId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("credit_transactions")
+}
+
+// ═══════════════════════════════════════════
+// SUBSCRIPTIONS
+// ═══════════════════════════════════════════
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  userId               String             @unique @map("user_id") @db.Uuid
+  stripeCustomerId     String             @map("stripe_customer_id")
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id")
+  plan                 UserPlan
+  status               SubscriptionStatus @default(active)
+  currentPeriodStart   DateTime?          @map("current_period_start")
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  cancelledAt          DateTime?          @map("cancelled_at")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+  @@map("subscriptions")
+}
+
+// ═══════════════════════════════════════════
+// AGENT LOGS
+// ═══════════════════════════════════════════
+
+model AgentLog {
+  id           String         @id @default(uuid()) @db.Uuid
+  bookId       String         @map("book_id") @db.Uuid
+  agent        String
+  step         AgentStep
+  provider     String?
+  model        String?
+  durationMs   Int?           @map("duration_ms")
+  tokensInput  Int?           @map("tokens_input")
+  tokensOutput Int?           @map("tokens_output")
+  costUsd      Decimal?       @map("cost_usd") @db.Decimal(10, 6)
+  attempt      Int            @default(1)
+  status       AgentLogStatus
+  error        String?
+  traceId      String?        @map("trace_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  book         Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId])
+  @@index([traceId])
+  @@index([createdAt(sort: Desc)])
+  @@map("agent_logs")
+}
+
+// ═══════════════════════════════════════════
+// USER BOOK STATES
+// ═══════════════════════════════════════════
+
+model UserBookState {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  bookId    String    @map("book_id") @db.Uuid
+  lastPage  Int       @default(1) @map("last_page")
+  bookmarks Int[]     @default([])
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book      Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@map("user_book_states")
+}
+
+// ═══════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════
+
+model Notification {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @map("user_id") @db.Uuid
+  type      NotificationType
+  channel   NotificationChannel
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?           @map("read_at")
+  sentAt    DateTime?           @map("sent_at")
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
