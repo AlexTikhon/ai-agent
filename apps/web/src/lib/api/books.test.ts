@@ -1,0 +1,138 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { booksApi } from './books';
+import { SupportedLanguage, BookStatus } from '@book/types';
+import type { BookDto } from '@book/types';
+
+const MOCK_BOOK: BookDto = {
+  id: 'book-1',
+  userId: 'user-1',
+  title: "Emma's Story",
+  childName: 'Emma',
+  childAge: 5,
+  language: SupportedLanguage.English,
+  theme: 'Friendship',
+  status: BookStatus.Created,
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
+};
+
+function mockOk(body: unknown, status = 200): Response {
+  return {
+    ok: true,
+    status,
+    json: async () => body,
+  } as unknown as Response;
+}
+
+function mockError(status: number, message: string | string[]): Response {
+  return {
+    ok: false,
+    status,
+    json: async () => ({ message }),
+  } as unknown as Response;
+}
+
+describe('booksApi', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  describe('list()', () => {
+    it('sends GET /books with dev auth headers', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockOk([MOCK_BOOK]));
+
+      const result = await booksApi.list();
+
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('http://localhost:4000/api/books');
+      expect((init.headers as Record<string, string>)['x-user-email']).toBe('dev@storyme.local');
+      expect((init.headers as Record<string, string>)['x-user-name']).toBe('Dev User');
+      expect(result).toEqual([MOCK_BOOK]);
+    });
+  });
+
+  describe('create()', () => {
+    it('sends POST /books with the request body', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockOk(MOCK_BOOK, 201));
+
+      const input = {
+        title: "Emma's Story",
+        childName: 'Emma',
+        childAge: 5,
+        language: SupportedLanguage.English,
+        theme: 'Friendship',
+      };
+      const result = await booksApi.create(input);
+
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('http://localhost:4000/api/books');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual(input);
+      expect(result).toEqual(MOCK_BOOK);
+    });
+  });
+
+  describe('update()', () => {
+    it('sends PATCH /books/:id with partial body', async () => {
+      const updated = { ...MOCK_BOOK, theme: 'Adventure' };
+      vi.mocked(fetch).mockResolvedValueOnce(mockOk(updated));
+
+      const result = await booksApi.update('book-1', { theme: 'Adventure' });
+
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('http://localhost:4000/api/books/book-1');
+      expect(init.method).toBe('PATCH');
+      expect(JSON.parse(init.body as string)).toEqual({ theme: 'Adventure' });
+      expect(result).toEqual(updated);
+    });
+  });
+
+  describe('remove()', () => {
+    it('sends DELETE /books/:id and returns undefined on 204', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: true, status: 204 } as Response);
+
+      const result = await booksApi.remove('book-1');
+
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('http://localhost:4000/api/books/book-1');
+      expect(init.method).toBe('DELETE');
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('error handling', () => {
+    it('throws with the string message from the error body', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockError(404, 'Book not found'));
+
+      await expect(booksApi.list()).rejects.toThrow('Book not found');
+    });
+
+    it('joins array messages from validation errors', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockError(400, ['childAge must not be less than 1', 'theme must be a string']),
+      );
+
+      await expect(booksApi.create({ title: 'x', childName: 'x', childAge: 0, language: SupportedLanguage.English, theme: '' })).rejects.toThrow(
+        'childAge must not be less than 1, theme must be a string',
+      );
+    });
+
+    it('falls back to HTTP status when body has no message', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => { throw new Error('not json'); },
+      } as unknown as Response);
+
+      await expect(booksApi.list()).rejects.toThrow('HTTP 500');
+    });
+  });
+});

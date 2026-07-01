@@ -49,16 +49,15 @@ export default function HomePage() {
 
         {/* Infrastructure status indicator (dev only) */}
         <div className="mt-16 rounded-xl border border-border-subtle bg-bg-subtle p-4 text-sm text-text-muted">
-          <p className="font-semibold text-text-secondary">Phase 0 — Foundation Ready</p>
+          <p className="font-semibold text-text-secondary">Phase 1A — Backend Ready</p>
           <p className="mt-1">
+            <a href="/dashboard" className="font-medium text-violet-600 underline underline-offset-2 hover:text-violet-500">
+              Open Dashboard
+            </a>
+            {' · '}
             API:{' '}
             <code className="rounded bg-stone-200 px-1 py-0.5 font-mono text-xs">
               localhost:4000/api/health
-            </code>
-            {' · '}
-            Docker Compose:{' '}
-            <code className="rounded bg-stone-200 px-1 py-0.5 font-mono text-xs">
-              docker compose up -d
             </code>
           </p>
         </div>
