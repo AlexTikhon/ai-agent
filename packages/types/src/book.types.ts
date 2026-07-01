@@ -48,6 +48,17 @@ export interface ChapterOutline {
   illustrableScenes: string[];
 }
 
+export interface IllustrationPlan {
+  prompt: string;
+  negativePrompt: string;
+  style: string;
+  aspectRatio: string;
+  characters: string[];
+  setting: string;
+  mood: string;
+  consistencyNotes: string;
+}
+
 export interface PagePlan {
   pageNumber: number;
   chapterIndex: number;
@@ -57,6 +68,7 @@ export interface PagePlan {
   illustrationPrompt: string;
   learningGoal: string;
   storyText?: string;
+  illustration?: IllustrationPlan | null;
 }
 
 export interface StoryPlan {

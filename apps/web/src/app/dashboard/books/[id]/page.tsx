@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { SupportedLanguage, BookStatus } from '@book/types';
-import type { BookDto, PagePlan } from '@book/types';
+import type { BookDto, IllustrationPlan, PagePlan } from '@book/types';
 import { booksApi } from '@/lib/api/books';
 import { ApiError } from '@/lib/api/client';
 
@@ -251,6 +251,7 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
   const pages: PagePlan[] | undefined =
     storyPlan?.pages && storyPlan.pages.length > 0 ? storyPlan.pages : undefined;
   const draftPages = pages?.filter((p) => p.storyText);
+  const illustrationPages = pages?.filter((p) => p.illustration);
 
   return (
     <div>
@@ -367,6 +368,26 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
         </div>
       )}
 
+      {illustrationPages && illustrationPages.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-100 bg-amber-50 p-4">
+          <h2 className="mb-3 font-display text-base font-semibold text-amber-800">
+            Illustration plan is ready
+          </h2>
+          <ul className="space-y-3">
+            {illustrationPages.map((page) => (
+              <li key={page.pageNumber} className="rounded-lg border border-amber-100 bg-white p-3 text-sm">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                    Page {page.pageNumber}
+                  </span>
+                </div>
+                <IllustrationPlanDetail illust={page.illustration as IllustrationPlan} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {!isDraft && (
         <p className="mb-4 rounded-lg bg-violet-50 px-4 py-3 text-sm text-violet-700">
           Generation has started. This draft can no longer be edited.
@@ -415,6 +436,47 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
         </>
       )}
     </div>
+  );
+}
+
+// ── IllustrationPlanDetail ────────────────────────────────────────────────────
+
+function IllustrationPlanDetail({ illust }: { illust: IllustrationPlan }) {
+  return (
+    <dl className="space-y-1 text-xs">
+      <div>
+        <dt className="inline font-medium text-text-muted">Prompt: </dt>
+        <dd className="inline text-text-secondary">{illust.prompt}</dd>
+      </div>
+      <div>
+        <dt className="inline font-medium text-text-muted">Negative prompt: </dt>
+        <dd className="inline text-text-secondary">{illust.negativePrompt}</dd>
+      </div>
+      <div>
+        <dt className="inline font-medium text-text-muted">Style: </dt>
+        <dd className="inline text-text-secondary">{illust.style}</dd>
+      </div>
+      <div>
+        <dt className="inline font-medium text-text-muted">Aspect ratio: </dt>
+        <dd className="inline text-text-secondary">{illust.aspectRatio}</dd>
+      </div>
+      <div>
+        <dt className="inline font-medium text-text-muted">Characters: </dt>
+        <dd className="inline text-text-secondary">{illust.characters.join(', ')}</dd>
+      </div>
+      <div>
+        <dt className="inline font-medium text-text-muted">Setting: </dt>
+        <dd className="inline text-text-secondary">{illust.setting}</dd>
+      </div>
+      <div>
+        <dt className="inline font-medium text-text-muted">Mood: </dt>
+        <dd className="inline text-text-secondary">{illust.mood}</dd>
+      </div>
+      <div>
+        <dt className="inline font-medium text-text-muted">Consistency notes: </dt>
+        <dd className="inline text-text-secondary">{illust.consistencyNotes}</dd>
+      </div>
+    </dl>
   );
 }
 

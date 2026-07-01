@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AgentLogStatus, AgentStep, BookStatus, Prisma, type Book } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
-import { Pronouns, type CharacterCard, type PagePlan, type StoryPlan } from '@book/types';
+import { Pronouns, type CharacterCard, type IllustrationPlan, type PagePlan, type StoryPlan } from '@book/types';
 
 function buildCharacterCard(name: string, age: number): CharacterCard {
   return {
@@ -115,6 +115,33 @@ function buildStoryDraft(
   return { ...storyPlanWithPages, pages };
 }
 
+function buildIllustrationPlan(
+  characterCard: CharacterCard,
+  storyPlanWithDraft: StoryPlan & { pages: Array<PagePlan & { storyText: string }> },
+): StoryPlan & { pages: Array<PagePlan & { storyText: string; illustration: IllustrationPlan }> } {
+  const pages = storyPlanWithDraft.pages.map(
+    (page): PagePlan & { storyText: string; illustration: IllustrationPlan } => {
+      const chapter = storyPlanWithDraft.chapters[page.chapterIndex];
+      const mood = chapter ? `${chapter.emotionalArc}, child-friendly` : 'joyful, child-friendly';
+
+      const illustration: IllustrationPlan = {
+        prompt: `${characterCard.visualAnchor}, ${page.sceneDescription}. ${page.illustrationPrompt}`,
+        negativePrompt: 'blurry, distorted face, extra limbs, scary, violent, text, watermark',
+        style: 'warm children book illustration, soft colors, friendly character design',
+        aspectRatio: '4:3',
+        characters: [characterCard.name],
+        setting: page.sceneDescription,
+        mood,
+        consistencyNotes: `Keep ${characterCard.name} visually consistent: ${characterCard.visualAnchor}. Use the same color palette and character design throughout.`,
+      };
+
+      return { ...page, storyText: page.storyText as string, illustration };
+    },
+  );
+
+  return { ...storyPlanWithDraft, pages };
+}
+
 @Injectable()
 export class AgentService {
   constructor(private readonly prisma: PrismaService) {}
@@ -128,15 +155,16 @@ export class AgentService {
     const characterCard = buildCharacterCard(childName, childAge);
     const storyPlan = buildStoryPlan(childName, theme);
     const pages = buildPagePlan(storyPlan);
-    const storyPlanWithPages = buildStoryDraft(characterCard, { ...storyPlan, pages });
+    const storyPlanWithDraft = buildStoryDraft(characterCard, { ...storyPlan, pages });
+    const storyPlanFinal = buildIllustrationPlan(characterCard, storyPlanWithDraft);
 
     const updated = await this.prisma.book.update({
       where: { id: book.id },
       data: {
-        status: BookStatus.story_draft,
+        status: BookStatus.illust_plan,
         title: storyPlan.title,
         characterCard: characterCard as unknown as Prisma.InputJsonValue,
-        storyPlan: storyPlanWithPages as unknown as Prisma.InputJsonValue,
+        storyPlan: storyPlanFinal as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -170,6 +198,14 @@ export class AgentService {
           bookId: book.id,
           agent: 'LocalPipelineAgent',
           step: AgentStep.story_draft,
+          status: AgentLogStatus.success,
+          attempt: 1,
+          traceId,
+        },
+        {
+          bookId: book.id,
+          agent: 'LocalPipelineAgent',
+          step: AgentStep.illust_plan,
           status: AgentLogStatus.success,
           attempt: 1,
           traceId,

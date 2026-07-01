@@ -62,13 +62,13 @@ describe('AgentService', () => {
 
   describe('startBookGeneration', () => {
     function setupMocks(bookOverrides: Partial<Book> = {}) {
-      const updatedBook = makeBook({ status: 'story_draft' as Book['status'], ...bookOverrides });
+      const updatedBook = makeBook({ status: 'illust_plan' as Book['status'], ...bookOverrides });
       prisma.book.update.mockResolvedValue(updatedBook);
-      prisma.agentLog.createMany.mockResolvedValue({ count: 4 });
+      prisma.agentLog.createMany.mockResolvedValue({ count: 5 });
       return updatedBook;
     }
 
-    it('advances book status to story_draft', async () => {
+    it('advances book status to illustration_plan', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -77,7 +77,7 @@ describe('AgentService', () => {
       expect(prisma.book.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'b-1' },
-          data: expect.objectContaining({ status: 'story_draft' }),
+          data: expect.objectContaining({ status: 'illust_plan' }),
         }),
       );
     });
@@ -211,7 +211,7 @@ describe('AgentService', () => {
       expect(updateArg?.data?.title).toContain('Mia');
     });
 
-    it('writes four AgentLog records all sharing the same traceId', async () => {
+    it('writes five AgentLog records all sharing the same traceId', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -220,15 +220,81 @@ describe('AgentService', () => {
       expect(prisma.agentLog.createMany).toHaveBeenCalledOnce();
       const createManyArg = prisma.agentLog.createMany.mock.calls[0]?.[0];
       const entries = createManyArg?.data as Array<Record<string, unknown>>;
-      expect(entries).toHaveLength(4);
+      expect(entries).toHaveLength(5);
       expect(entries[0]?.step).toBe('char_build');
       expect(entries[1]?.step).toBe('story_plan');
       expect(entries[2]?.step).toBe('page_plan');
       expect(entries[3]?.step).toBe('story_draft');
+      expect(entries[4]?.step).toBe('illust_plan');
       const traceId = entries[0]?.traceId;
       expect(typeof traceId).toBe('string');
       for (const entry of entries) {
         expect(entry.traceId).toBe(traceId);
+      }
+    });
+
+    it('stores illustration on every page', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const pages = plan?.pages as Array<Record<string, unknown>>;
+      for (const page of pages) {
+        expect(page.illustration).toBeDefined();
+        expect(page.illustration).not.toBeNull();
+      }
+    });
+
+    it('each page illustration has a non-empty prompt and negativePrompt', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const pages = plan?.pages as Array<Record<string, unknown>>;
+      for (const page of pages) {
+        const illust = page.illustration as Record<string, unknown>;
+        expect(typeof illust.prompt).toBe('string');
+        expect((illust.prompt as string).length).toBeGreaterThan(0);
+        expect(typeof illust.negativePrompt).toBe('string');
+        expect((illust.negativePrompt as string).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('illustration style is stable across all pages', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const pages = plan?.pages as Array<Record<string, unknown>>;
+      const styles = pages.map((p) => (p.illustration as Record<string, unknown>).style);
+      const firstStyle = styles[0];
+      for (const s of styles) {
+        expect(s).toBe(firstStyle);
+      }
+    });
+
+    it('illustration aspectRatio is stable across all pages', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const pages = plan?.pages as Array<Record<string, unknown>>;
+      const ratios = pages.map((p) => (p.illustration as Record<string, unknown>).aspectRatio);
+      const firstRatio = ratios[0];
+      for (const r of ratios) {
+        expect(r).toBe(firstRatio);
       }
     });
 

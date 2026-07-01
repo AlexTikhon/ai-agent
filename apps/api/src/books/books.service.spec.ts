@@ -15,7 +15,7 @@ function createMockAgentService(): jest.Mocked<AgentService> {
 
 // Prisma emits string enum values that match the schema — 'created', 'story_draft', etc.
 const STATUS_CREATED = 'created' as Book['status'];
-const STATUS_IN_PROGRESS = 'story_draft' as Book['status'];
+const STATUS_IN_PROGRESS = 'illust_plan' as Book['status'];
 
 function makeBook(overrides: Partial<Book> = {}): Book {
   return {
@@ -272,7 +272,7 @@ describe('BooksService', () => {
       const result = await service.startGeneration('u-1', 'b-1');
 
       expect(agentService.startBookGeneration).toHaveBeenCalledWith(book);
-      expect(result.book.status).toBe('story_draft');
+      expect(result.book.status).toBe('illust_plan');
       expect(result.book.id).toBe('b-1');
     });
 
