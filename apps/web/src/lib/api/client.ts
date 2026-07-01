@@ -2,6 +2,13 @@ const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/ap
 const DEV_EMAIL = 'dev@storyme.local';
 const DEV_NAME = 'Dev User';
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -25,7 +32,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     } catch {
       // ignore parse error
     }
-    throw new Error(message);
+    throw new ApiError(res.status, message);
   }
 
   return res.json() as Promise<T>;

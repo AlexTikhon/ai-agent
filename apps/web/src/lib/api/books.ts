@@ -5,6 +5,9 @@ export const booksApi = {
   list: (): Promise<BookDto[]> =>
     apiFetch('/books'),
 
+  get: (id: string): Promise<BookDto> =>
+    apiFetch(`/books/${id}`),
+
   create: (data: CreateBookInput): Promise<BookDto> =>
     apiFetch('/books', { method: 'POST', body: JSON.stringify(data) }),
 

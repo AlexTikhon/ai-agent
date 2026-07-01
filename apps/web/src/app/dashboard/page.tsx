@@ -286,9 +286,12 @@ function BookCard({ book, onEdit, onDelete, deleting }: BookCardProps) {
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border-subtle bg-bg-surface p-5 shadow-xs transition-shadow hover:shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-2">
-        <p className="font-display text-lg font-semibold leading-snug text-text-primary">
+        <Link
+          href={`/dashboard/books/${book.id}`}
+          className="font-display text-lg font-semibold leading-snug text-text-primary transition-colors hover:text-violet-700"
+        >
           {book.title ?? 'Untitled'}
-        </p>
+        </Link>
         <span
           className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
             isDraft

@@ -98,6 +98,15 @@ describe('DashboardPage', () => {
     expect(link.getAttribute('href')).toBe('/dashboard/books/new');
   });
 
+  it('book card title links to the book detail page', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk([MOCK_BOOK]));
+    render(<DashboardPage />);
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: "Emma's Story" });
+      expect(link.getAttribute('href')).toBe('/dashboard/books/book-1');
+    });
+  });
+
   it('Create First Book link in empty state links to the wizard', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(mockOk([]));
     render(<DashboardPage />);
