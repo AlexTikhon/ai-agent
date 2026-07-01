@@ -222,3 +222,8 @@ export interface BooksPageDto {
   limit: number;
   total: number;
 }
+
+/** Response from POST /books/:id/generate */
+export interface GenerateBookResponse {
+  book: BookDto;
+}

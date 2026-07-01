@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { booksApi } from './books';
 import { SupportedLanguage, BookStatus } from '@book/types';
-import type { BookDto, BooksPageDto } from '@book/types';
+import type { BookDto, BooksPageDto, GenerateBookResponse } from '@book/types';
 
 const MOCK_BOOK: BookDto = {
   id: 'book-1',
@@ -102,6 +102,21 @@ describe('booksApi', () => {
       expect(init.method).toBe('PATCH');
       expect(JSON.parse(init.body as string)).toEqual({ theme: 'Adventure' });
       expect(result).toEqual(updated);
+    });
+  });
+
+  describe('generate()', () => {
+    it('sends POST /books/:id/generate and returns GenerateBookResponse', async () => {
+      const generated: GenerateBookResponse = { book: { ...MOCK_BOOK, status: BookStatus.CharBuild } };
+      vi.mocked(fetch).mockResolvedValueOnce(mockOk(generated));
+
+      const result = await booksApi.generate('book-1');
+
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('http://localhost:4000/api/books/book-1/generate');
+      expect(init.method).toBe('POST');
+      expect(result).toEqual(generated);
     });
   });
 

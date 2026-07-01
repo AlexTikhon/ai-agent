@@ -158,4 +158,55 @@ describe('BookDetailPage', () => {
       expect(pushMock).toHaveBeenCalledWith('/dashboard');
     });
   });
+
+  // ── Generate Story ────────────────────────────────────────────────────────
+
+  it('renders the Generate Story button for a complete draft book', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(MOCK_BOOK));
+    render(<BookDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /generate story/i })).toBeDefined();
+    });
+  });
+
+  it('disables Generate Story and shows a warning when required fields are missing', async () => {
+    const incomplete = { ...MOCK_BOOK, childName: null };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(incomplete));
+    render(<BookDetailPage />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /generate story/i })).toBeDisabled();
+      expect(screen.getByText(/complete all fields to generate/i)).toBeDefined();
+    });
+  });
+
+  it('updates book status after successful generation', async () => {
+    const user = userEvent.setup();
+    const generated = { ...MOCK_BOOK, status: BookStatus.CharBuild };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockOk(MOCK_BOOK))
+      .mockResolvedValueOnce(mockOk({ book: generated }));
+
+    render(<BookDetailPage />);
+    await waitFor(() => screen.getByRole('button', { name: /generate story/i }));
+    await user.click(screen.getByRole('button', { name: /generate story/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('char_build')).toBeDefined();
+    });
+  });
+
+  it('shows an error alert when generation fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockOk(MOCK_BOOK))
+      .mockResolvedValueOnce(mockError(400, 'Missing required draft fields: language'));
+
+    render(<BookDetailPage />);
+    await waitFor(() => screen.getByRole('button', { name: /generate story/i }));
+    await user.click(screen.getByRole('button', { name: /generate story/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Missing required draft fields');
+    });
+  });
 });

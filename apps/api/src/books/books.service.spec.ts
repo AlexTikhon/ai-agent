@@ -1,12 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { Book } from '@prisma/client';
 import { BooksService } from './books.service';
+import type { AgentService } from '../agent/agent.service';
 import { createMockPrisma } from '../common/test-utils/mock-prisma';
 import type { CreateBookDto } from './dto/create-book.dto';
 import type { UpdateBookDto } from './dto/update-book.dto';
 
 type MockPrisma = ReturnType<typeof createMockPrisma>;
+
+function createMockAgentService(): jest.Mocked<AgentService> {
+  return { startBookGeneration: vi.fn() } as unknown as jest.Mocked<AgentService>;
+}
 
 // Prisma emits string enum values that match the schema — 'created', 'char_build', etc.
 const STATUS_CREATED = 'created' as Book['status'];
@@ -61,10 +66,12 @@ function makeBook(overrides: Partial<Book> = {}): Book {
 describe('BooksService', () => {
   let service: BooksService;
   let prisma: MockPrisma;
+  let agentService: ReturnType<typeof createMockAgentService>;
 
   beforeEach(() => {
     prisma = createMockPrisma();
-    service = new BooksService(prisma as never);
+    agentService = createMockAgentService();
+    service = new BooksService(prisma as never, agentService as never);
   });
 
   // ─── create ──────────────────────────────────────────────────────────────────
@@ -250,6 +257,104 @@ describe('BooksService', () => {
       prisma.book.findFirst.mockResolvedValue(null);
 
       await expect(service.remove('no-such', 'u-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── startGeneration ─────────────────────────────────────────────────────────
+
+  describe('startGeneration', () => {
+    it('starts generation and returns GenerateBookResponse on success', async () => {
+      const book = makeBook({ status: STATUS_CREATED });
+      const updatedBook = makeBook({ status: STATUS_IN_PROGRESS });
+      prisma.book.findFirst.mockResolvedValue(book);
+      agentService.startBookGeneration.mockResolvedValue(updatedBook);
+
+      const result = await service.startGeneration('u-1', 'b-1');
+
+      expect(agentService.startBookGeneration).toHaveBeenCalledWith(book);
+      expect(result.book.status).toBe('char_build');
+      expect(result.book.id).toBe('b-1');
+    });
+
+    it('throws NotFoundException when book does not exist', async () => {
+      prisma.book.findFirst.mockResolvedValue(null);
+
+      await expect(service.startGeneration('u-1', 'no-such')).rejects.toThrow(NotFoundException);
+      expect(agentService.startBookGeneration).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when book belongs to a different user', async () => {
+      // findFirst returns null because userId filter excludes the row
+      prisma.book.findFirst.mockResolvedValue(null);
+
+      await expect(service.startGeneration('u-other', 'b-1')).rejects.toThrow(NotFoundException);
+      expect(agentService.startBookGeneration).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a soft-deleted book', async () => {
+      // findOwnedOrThrow filters deletedAt: null — deleted books appear as not found
+      prisma.book.findFirst.mockResolvedValue(null);
+
+      await expect(service.startGeneration('u-1', 'b-deleted')).rejects.toThrow(NotFoundException);
+      expect(agentService.startBookGeneration).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when childName is missing', async () => {
+      const book = makeBook({ childName: null });
+      prisma.book.findFirst.mockResolvedValue(book);
+
+      await expect(service.startGeneration('u-1', 'b-1')).rejects.toThrow(BadRequestException);
+      expect(agentService.startBookGeneration).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when childAge is missing', async () => {
+      const book = makeBook({ childAge: null });
+      prisma.book.findFirst.mockResolvedValue(book);
+
+      await expect(service.startGeneration('u-1', 'b-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when language is missing', async () => {
+      const book = makeBook({ language: null });
+      prisma.book.findFirst.mockResolvedValue(book);
+
+      await expect(service.startGeneration('u-1', 'b-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when theme is missing', async () => {
+      const book = makeBook({ theme: null });
+      prisma.book.findFirst.mockResolvedValue(book);
+
+      await expect(service.startGeneration('u-1', 'b-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('error message lists all missing fields', async () => {
+      const book = makeBook({ childName: null, language: null });
+      prisma.book.findFirst.mockResolvedValue(book);
+
+      await expect(service.startGeneration('u-1', 'b-1')).rejects.toThrow(
+        /Missing required draft fields:.*childName.*language/,
+      );
+    });
+
+    it('throws ConflictException when generation is already started', async () => {
+      const book = makeBook({ status: STATUS_IN_PROGRESS });
+      prisma.book.findFirst.mockResolvedValue(book);
+
+      await expect(service.startGeneration('u-1', 'b-1')).rejects.toThrow(ConflictException);
+      expect(agentService.startBookGeneration).not.toHaveBeenCalled();
+    });
+
+    it('calls agentService.startBookGeneration with the owned book', async () => {
+      const book = makeBook({ status: STATUS_CREATED });
+      const updatedBook = makeBook({ status: STATUS_IN_PROGRESS });
+      prisma.book.findFirst.mockResolvedValue(book);
+      agentService.startBookGeneration.mockResolvedValue(updatedBook);
+
+      await service.startGeneration('u-1', 'b-1');
+
+      expect(agentService.startBookGeneration).toHaveBeenCalledOnce();
+      expect(agentService.startBookGeneration).toHaveBeenCalledWith(book);
     });
   });
 });

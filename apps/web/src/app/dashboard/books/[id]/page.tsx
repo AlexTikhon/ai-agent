@@ -44,6 +44,15 @@ function validateEdit(form: EditForm): string | null {
   return null;
 }
 
+function getMissingDraftFields(book: BookDto): string[] {
+  const missing: string[] = [];
+  if (!book.childName) missing.push('child name');
+  if (book.childAge == null) missing.push('age');
+  if (!book.language) missing.push('language');
+  if (!book.theme) missing.push('theme');
+  return missing;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BookDetailPage() {
@@ -67,6 +76,8 @@ export default function BookDetailPage() {
   const [saving, setSaving] = useState(false);
 
   const [deleting, setDeleting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +152,19 @@ export default function BookDetailPage() {
     }
   };
 
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const response = await booksApi.generate(id);
+      setBook(response.book);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : 'Failed to start generation');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <main className="min-h-dvh bg-bg-base px-4 py-10">
       <div className="mx-auto max-w-lg">
@@ -194,6 +218,9 @@ export default function BookDetailPage() {
                   onEdit={startEdit}
                   onDelete={() => { void handleDelete(); }}
                   deleting={deleting}
+                  onGenerate={() => { void handleGenerate(); }}
+                  generating={generating}
+                  generateError={generateError}
                 />
               )}
             </div>
@@ -211,10 +238,15 @@ interface BookDetailViewProps {
   onEdit: () => void;
   onDelete: () => void;
   deleting: boolean;
+  onGenerate: () => void;
+  generating: boolean;
+  generateError: string | null;
 }
 
-function BookDetailView({ book, onEdit, onDelete, deleting }: BookDetailViewProps) {
+function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generating, generateError }: BookDetailViewProps) {
   const isDraft = book.status === BookStatus.Created;
+  const missingFields = getMissingDraftFields(book);
+  const canGenerate = isDraft && missingFields.length === 0;
 
   return (
     <div>
@@ -262,6 +294,30 @@ function BookDetailView({ book, onEdit, onDelete, deleting }: BookDetailViewProp
           </dd>
         </div>
       </dl>
+
+      {isDraft && missingFields.length > 0 && (
+        <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Complete all fields to generate: {missingFields.join(', ')}.
+        </p>
+      )}
+
+      {generateError && (
+        <p role="alert" className="mb-4 rounded-lg bg-danger-light px-4 py-3 text-sm text-danger-base">
+          {generateError}
+        </p>
+      )}
+
+      <div className="mb-3 flex gap-3">
+        {isDraft && (
+          <button
+            onClick={onGenerate}
+            disabled={!canGenerate || generating}
+            className="flex-1 rounded-xl bg-violet-600 py-2 text-sm font-semibold text-white shadow-brand transition-all hover:bg-violet-500 disabled:opacity-60"
+          >
+            {generating ? 'Generating…' : 'Generate Story'}
+          </button>
+        )}
+      </div>
 
       <div className="flex gap-3">
         <button

@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
-import type { BookDto, BooksPageDto } from '@book/types';
+import type { BookDto, BooksPageDto, GenerateBookResponse } from '@book/types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DevAuthGuard } from '../auth/dev-auth.guard';
 import { BooksService } from './books.service';
@@ -51,6 +51,15 @@ export class BooksController {
     @Body() dto: UpdateBookDto,
   ): Promise<BookDto> {
     return this.booksService.update(id, user.id, dto);
+  }
+
+  @Post(':id/generate')
+  @HttpCode(200)
+  generate(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ): Promise<GenerateBookResponse> {
+    return this.booksService.startGeneration(user.id, id);
   }
 
   @Delete(':id')

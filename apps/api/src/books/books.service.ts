@@ -1,14 +1,18 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { BookStatus, type Book } from '@prisma/client';
-import type { BookDto, BooksPageDto } from '@book/types';
+import type { BookDto, BooksPageDto, GenerateBookResponse } from '@book/types';
 import { PrismaService } from '../database/prisma.service';
+import { AgentService } from '../agent/agent.service';
 import { toBookDto } from './books.mapper';
 import type { CreateBookDto } from './dto/create-book.dto';
 import type { UpdateBookDto } from './dto/update-book.dto';
 
 @Injectable()
 export class BooksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly agentService: AgentService,
+  ) {}
 
   async create(userId: string, dto: CreateBookDto): Promise<BookDto> {
     const book = await this.prisma.book.create({
@@ -68,6 +72,26 @@ export class BooksService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+  }
+
+  async startGeneration(userId: string, bookId: string): Promise<GenerateBookResponse> {
+    const book = await this.findOwnedOrThrow(bookId, userId);
+
+    const missing: string[] = [];
+    if (!book.childName) missing.push('childName');
+    if (book.childAge == null) missing.push('childAge');
+    if (!book.language) missing.push('language');
+    if (!book.theme) missing.push('theme');
+    if (missing.length > 0) {
+      throw new BadRequestException(`Missing required draft fields: ${missing.join(', ')}`);
+    }
+
+    if (book.status !== BookStatus.created) {
+      throw new ConflictException('Generation already started or completed for this book');
+    }
+
+    const updated = await this.agentService.startBookGeneration(book);
+    return { book: toBookDto(updated) };
   }
 
   /** Looks up a book and verifies ownership in one query — 404s rather than leaking existence of another user's book. */
