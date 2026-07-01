@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState, useCallback, type FormEvent } from 'react';
 import type { BookDto } from '@book/types';
 import { SupportedLanguage, BookStatus } from '@book/types';
@@ -33,11 +34,6 @@ export default function DashboardPage() {
   const [books, setBooks] = useState<BookDto[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState<DraftFormValues>(DEFAULT_FORM);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<DraftFormValues>(DEFAULT_FORM);
   const [editError, setEditError] = useState<string | null>(null);
@@ -57,25 +53,6 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadBooks();
   }, [loadBooks]);
-
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const newBook = await booksApi.create({
-        title: `${createForm.childName.trim()}'s Story`,
-        ...createForm,
-      });
-      setBooks((prev) => (prev ? [newBook, ...prev] : [newBook]));
-      setShowCreate(false);
-      setCreateForm(DEFAULT_FORM);
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create book');
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const startEdit = (book: BookDto) => {
     setEditingId(book.id);
@@ -119,12 +96,6 @@ export default function DashboardPage() {
     }
   };
 
-  const openCreate = () => {
-    setShowCreate(true);
-    setCreateForm(DEFAULT_FORM);
-    setCreateError(null);
-  };
-
   return (
     <main className="min-h-dvh bg-bg-base px-4 py-10">
       <div className="mx-auto max-w-container-lg">
@@ -138,41 +109,20 @@ export default function DashboardPage() {
               <span className="font-medium text-text-secondary">dev@storyme.local</span>
             </p>
           </div>
-          <button
-            onClick={openCreate}
+          <Link
+            href="/dashboard/books/new"
             className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white shadow-brand transition-all hover:bg-violet-500 focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true">+</span> New Book
-          </button>
+          </Link>
         </div>
-
-        {/* ── Create form ── */}
-        {showCreate && (
-          <div className="mb-8 rounded-2xl border border-border-default bg-bg-surface p-6 shadow-sm">
-            <h2 className="mb-5 font-display text-xl font-semibold text-text-primary">
-              New Book Draft
-            </h2>
-            <form onSubmit={(e) => { void handleCreate(e); }}>
-              <DraftFormFields
-                values={createForm}
-                onChange={setCreateForm}
-                error={createError}
-                submitting={creating}
-                submitLabel="Create Draft"
-                onCancel={() => setShowCreate(false)}
-              />
-            </form>
-          </div>
-        )}
 
         {/* ── List states ── */}
         {books === null && !loadError && <BookListSkeleton />}
 
         {loadError && <ErrorBanner message={loadError} onRetry={() => { void loadBooks(); }} />}
 
-        {books !== null && books.length === 0 && (
-          <EmptyState onNew={openCreate} />
-        )}
+        {books !== null && books.length === 0 && <EmptyState />}
 
         {books !== null && books.length > 0 && (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Book drafts">
@@ -412,17 +362,17 @@ function BookListSkeleton() {
   );
 }
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border-default py-20 text-center">
       <p className="mb-2 text-lg font-semibold text-text-primary">No book drafts yet</p>
       <p className="mb-6 text-sm text-text-muted">Create your first personalized story</p>
-      <button
-        onClick={onNew}
+      <Link
+        href="/dashboard/books/new"
         className="inline-flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white shadow-brand transition-all hover:bg-violet-500"
       >
         <span aria-hidden="true">+</span> Create First Book
-      </button>
+      </Link>
     </div>
   );
 }
