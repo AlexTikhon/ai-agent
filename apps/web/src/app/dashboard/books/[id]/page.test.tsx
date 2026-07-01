@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useRouter, useParams } from 'next/navigation';
 import BookDetailPage from './page';
 import { SupportedLanguage, BookStatus } from '@book/types';
-import type { BookDto, IllustrationPlan, PagePlan } from '@book/types';
+import type { BookDto, BookPreview, IllustrationPlan, PagePlan } from '@book/types';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -34,6 +34,48 @@ const MOCK_BOOK: BookDto = {
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
 };
+
+function makeBookPreview(childName = 'Emma'): BookPreview {
+  return {
+    title: `${childName}'s Friendship Adventure`,
+    subtitle: 'A friendship story for Emma',
+    cover: {
+      title: `${childName}'s Friendship Adventure`,
+      subtitle: 'A friendship story for Emma',
+      childName,
+      illustrationPrompt: `A child named ${childName} on the cover of a children's book, watercolor style`,
+    },
+    pages: [
+      {
+        pageNumber: 1,
+        title: 'A Magical Discovery — Part 1',
+        text: 'One sunny morning, Emma discovered something magical.',
+        illustrationPrompt: `A child with wavy brown hair, ${childName} discovering a glowing light.`,
+        layout: 'image_top_text_bottom',
+        learningGoal: 'Through friendship, we learn kindness.',
+      },
+      {
+        pageNumber: 2,
+        title: 'A Magical Discovery — Part 2',
+        text: `${childName} thought about friendship and took another brave step forward.`,
+        illustrationPrompt: `A child with wavy brown hair, ${childName} and friend walking through mushrooms.`,
+        layout: 'text_left_image_right',
+        learningGoal: 'Through friendship, we learn kindness.',
+      },
+    ],
+    backCover: {
+      message: `The End! We hope ${childName} enjoyed this adventure. Keep exploring, keep dreaming!`,
+      educationalSummary: 'Through friendship, we learn the importance of courage, kindness, and believing in ourselves.',
+    },
+    metadata: {
+      language: 'en',
+      theme: 'Friendship',
+      childAge: 5,
+      totalPages: 2,
+      generatedBy: 'LocalPipelineAgent',
+    },
+  };
+}
 
 function mockOk(body: unknown, status = 200): Response {
   return { ok: true, status, json: async () => body } as unknown as Response;
@@ -179,9 +221,9 @@ describe('BookDetailPage', () => {
     });
   });
 
-  it('updates book status badge to illust_plan after successful generation', async () => {
+  it('updates book status badge to preview_ready after successful generation', async () => {
     const user = userEvent.setup();
-    const generated = { ...MOCK_BOOK, status: BookStatus.IllustPlan };
+    const generated = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
     vi.mocked(fetch)
       .mockResolvedValueOnce(mockOk(MOCK_BOOK))
       .mockResolvedValueOnce(mockOk({ book: generated }));
@@ -191,7 +233,7 @@ describe('BookDetailPage', () => {
     await user.click(screen.getByRole('button', { name: /generate story/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('illust_plan')).toBeDefined();
+      expect(screen.getByText('preview_ready')).toBeDefined();
     });
   });
 
@@ -666,6 +708,124 @@ describe('BookDetailPage', () => {
   it('shows "Generation has started" note when status is illust_plan', async () => {
     const illustPlanBook = { ...MOCK_BOOK, status: BookStatus.IllustPlan };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(illustPlanBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/generation has started/i)).toBeDefined();
+    });
+  });
+
+  // ── Book preview section ──────────────────────────────────────────────────
+
+  it('renders the book preview section after generation returns bookPreview', async () => {
+    const user = userEvent.setup();
+    const bookPreview = makeBookPreview();
+    const generated = {
+      ...MOCK_BOOK,
+      status: BookStatus.PreviewReady,
+      bookPreview,
+    };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockOk(MOCK_BOOK))
+      .mockResolvedValueOnce(mockOk({ book: generated }));
+
+    render(<BookDetailPage />);
+    await waitFor(() => screen.getByRole('button', { name: /generate story/i }));
+    await user.click(screen.getByRole('button', { name: /generate story/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /book preview is ready/i })).toBeDefined();
+      expect(screen.getByText("Emma's Friendship Adventure")).toBeDefined();
+      expect(screen.getByText(/A friendship story for Emma/i)).toBeDefined();
+    });
+  });
+
+  it('renders the book preview section when book loads with bookPreview already set', async () => {
+    const bookPreview = makeBookPreview();
+    const bookWithPreview = {
+      ...MOCK_BOOK,
+      status: BookStatus.PreviewReady,
+      bookPreview,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /book preview is ready/i })).toBeDefined();
+      expect(screen.getByText("Emma's Friendship Adventure")).toBeDefined();
+    });
+  });
+
+  it('renders preview pages with text and illustration prompt', async () => {
+    const bookPreview = makeBookPreview();
+    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('One sunny morning, Emma discovered something magical.')).toBeDefined();
+      expect(screen.getByText(/A child with wavy brown hair, Emma discovering a glowing light/i)).toBeDefined();
+    });
+  });
+
+  it('renders back cover content in the book preview section', async () => {
+    const bookPreview = makeBookPreview();
+    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/The End! We hope Emma enjoyed this adventure/i)).toBeDefined();
+    });
+  });
+
+  it('renders metadata in the book preview section', async () => {
+    const bookPreview = makeBookPreview();
+    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      // language 'en' appears in both the book detail row and the metadata — use getAllByText
+      expect(screen.getAllByText('en').length).toBeGreaterThan(0);
+      // totalPages renders in the metadata; page badges also render '1' and '2' separately
+      expect(screen.getAllByText('2').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('renders preview_ready status badge correctly', async () => {
+    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('preview_ready')).toBeDefined();
+    });
+  });
+
+  it('hides Edit and Delete buttons when status is preview_ready', async () => {
+    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('preview_ready')).toBeDefined();
+    });
+
+    expect(screen.queryByRole('button', { name: /^edit$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
+  });
+
+  it('shows "Generation has started" note when status is preview_ready', async () => {
+    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
 
     render(<BookDetailPage />);
 

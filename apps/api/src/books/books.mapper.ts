@@ -1,5 +1,5 @@
 import type { Book } from '@prisma/client';
-import { BookStatus, SupportedLanguage, type BookDto, type CharacterCard, type StoryPlan } from '@book/types';
+import { BookStatus, SupportedLanguage, type BookDto, type BookPreview, type CharacterCard, type StoryPlan } from '@book/types';
 
 export function toBookDto(book: Book): BookDto {
   return {
@@ -13,6 +13,7 @@ export function toBookDto(book: Book): BookDto {
     status: book.status as unknown as BookStatus,
     characterCard: book.characterCard as unknown as CharacterCard | null,
     storyPlan: book.storyPlan as unknown as StoryPlan | null,
+    bookPreview: book.bookPreview as unknown as BookPreview | null,
     createdAt: book.createdAt.toISOString(),
     updatedAt: book.updatedAt.toISOString(),
   };

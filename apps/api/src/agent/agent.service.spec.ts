@@ -21,6 +21,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
     theme: 'friendship',
     characterCard: null,
     storyPlan: null,
+    bookPreview: null,
     chapters: null,
     imagePrompts: null,
     qualityReport: null,
@@ -62,13 +63,13 @@ describe('AgentService', () => {
 
   describe('startBookGeneration', () => {
     function setupMocks(bookOverrides: Partial<Book> = {}) {
-      const updatedBook = makeBook({ status: 'illust_plan' as Book['status'], ...bookOverrides });
+      const updatedBook = makeBook({ status: 'preview_ready' as Book['status'], ...bookOverrides });
       prisma.book.update.mockResolvedValue(updatedBook);
-      prisma.agentLog.createMany.mockResolvedValue({ count: 5 });
+      prisma.agentLog.createMany.mockResolvedValue({ count: 6 });
       return updatedBook;
     }
 
-    it('advances book status to illustration_plan', async () => {
+    it('advances book status to preview_ready', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -77,7 +78,7 @@ describe('AgentService', () => {
       expect(prisma.book.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'b-1' },
-          data: expect.objectContaining({ status: 'illust_plan' }),
+          data: expect.objectContaining({ status: 'preview_ready' }),
         }),
       );
     });
@@ -211,7 +212,7 @@ describe('AgentService', () => {
       expect(updateArg?.data?.title).toContain('Mia');
     });
 
-    it('writes five AgentLog records all sharing the same traceId', async () => {
+    it('writes six AgentLog records all sharing the same traceId', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -220,12 +221,13 @@ describe('AgentService', () => {
       expect(prisma.agentLog.createMany).toHaveBeenCalledOnce();
       const createManyArg = prisma.agentLog.createMany.mock.calls[0]?.[0];
       const entries = createManyArg?.data as Array<Record<string, unknown>>;
-      expect(entries).toHaveLength(5);
+      expect(entries).toHaveLength(6);
       expect(entries[0]?.step).toBe('char_build');
       expect(entries[1]?.step).toBe('story_plan');
       expect(entries[2]?.step).toBe('page_plan');
       expect(entries[3]?.step).toBe('story_draft');
       expect(entries[4]?.step).toBe('illust_plan');
+      expect(entries[5]?.step).toBe('preview_ready');
       const traceId = entries[0]?.traceId;
       expect(typeof traceId).toBe('string');
       for (const entry of entries) {
@@ -309,6 +311,108 @@ describe('AgentService', () => {
       const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
       expect(card?.name).toBe('Leo');
       expect(plan?.theme).toBe('courage');
+    });
+
+    it('stores bookPreview with a non-empty title', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
+      expect(preview).toBeDefined();
+      expect(typeof preview?.title).toBe('string');
+      expect((preview?.title as string).length).toBeGreaterThan(0);
+    });
+
+    it('stores bookPreview with a cover', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
+      expect(preview?.cover).toBeDefined();
+      const cover = preview?.cover as Record<string, unknown>;
+      expect(typeof cover?.title).toBe('string');
+      expect(typeof cover?.illustrationPrompt).toBe('string');
+      expect(cover?.childName).toBe('Mia');
+    });
+
+    it('bookPreview.pages length equals storyPlan.pages length', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
+      const storyPages = plan?.pages as unknown[];
+      const previewPages = preview?.pages as unknown[];
+      expect(previewPages.length).toBe(storyPages.length);
+    });
+
+    it('every preview page has text and illustrationPrompt', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
+      const pages = preview?.pages as Array<Record<string, unknown>>;
+      for (const page of pages) {
+        expect(typeof page.text).toBe('string');
+        expect((page.text as string).length).toBeGreaterThan(0);
+        expect(typeof page.illustrationPrompt).toBe('string');
+        expect((page.illustrationPrompt as string).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('bookPreview.metadata.totalPages equals bookPreview.pages.length', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
+      const pages = preview?.pages as unknown[];
+      const metadata = preview?.metadata as Record<string, unknown>;
+      expect(metadata?.totalPages).toBe(pages.length);
+    });
+
+    it('storyText remains present on every page after buildBookPreview', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const pages = plan?.pages as Array<Record<string, unknown>>;
+      for (const page of pages) {
+        expect(typeof page.storyText).toBe('string');
+        expect((page.storyText as string).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('illustration remains present on every page after buildBookPreview', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const pages = plan?.pages as Array<Record<string, unknown>>;
+      for (const page of pages) {
+        expect(page.illustration).toBeDefined();
+        expect(page.illustration).not.toBeNull();
+      }
     });
   });
 });

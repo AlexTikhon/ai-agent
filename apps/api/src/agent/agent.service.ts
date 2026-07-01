@@ -2,7 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { AgentLogStatus, AgentStep, BookStatus, Prisma, type Book } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
-import { Pronouns, type CharacterCard, type IllustrationPlan, type PagePlan, type StoryPlan } from '@book/types';
+import {
+  Pronouns,
+  type BookPreview,
+  type CharacterCard,
+  type IllustrationPlan,
+  type PagePlan,
+  type StoryPlan,
+} from '@book/types';
 
 function buildCharacterCard(name: string, age: number): CharacterCard {
   return {
@@ -142,6 +149,52 @@ function buildIllustrationPlan(
   return { ...storyPlanWithDraft, pages };
 }
 
+const PAGE_LAYOUTS = ['image_top_text_bottom', 'text_left_image_right'] as const;
+
+function buildBookPreview(
+  book: Book,
+  characterCard: CharacterCard,
+  storyPlanFinal: StoryPlan & { pages: Array<PagePlan & { storyText: string; illustration: IllustrationPlan }> },
+): BookPreview {
+  const childName = book.childName ?? 'Alex';
+  const childAge = book.childAge ?? 6;
+  const language = (book.language as string) ?? 'en';
+  const { title, theme, educationalMessage } = storyPlanFinal;
+  const subtitle = storyPlanFinal.subtitle ?? `A ${theme} story for ${childName}`;
+
+  const pages = storyPlanFinal.pages.map((page, index) => ({
+    pageNumber: page.pageNumber,
+    title: page.title,
+    text: page.storyText as string,
+    illustrationPrompt: (page.illustration as IllustrationPlan).prompt,
+    layout: PAGE_LAYOUTS[index % PAGE_LAYOUTS.length]!,
+    learningGoal: page.learningGoal,
+  }));
+
+  return {
+    title,
+    subtitle,
+    cover: {
+      title,
+      subtitle,
+      childName,
+      illustrationPrompt: `${characterCard.visualAnchor}, standing on the cover of a children's book titled "${title}", warm and inviting, watercolor style`,
+    },
+    pages,
+    backCover: {
+      message: `The End! We hope ${childName} enjoyed this adventure. Keep exploring, keep dreaming!`,
+      educationalSummary: educationalMessage,
+    },
+    metadata: {
+      language,
+      theme,
+      childAge,
+      totalPages: pages.length,
+      generatedBy: 'LocalPipelineAgent',
+    },
+  };
+}
+
 @Injectable()
 export class AgentService {
   constructor(private readonly prisma: PrismaService) {}
@@ -157,14 +210,16 @@ export class AgentService {
     const pages = buildPagePlan(storyPlan);
     const storyPlanWithDraft = buildStoryDraft(characterCard, { ...storyPlan, pages });
     const storyPlanFinal = buildIllustrationPlan(characterCard, storyPlanWithDraft);
+    const bookPreview = buildBookPreview(book, characterCard, storyPlanFinal);
 
     const updated = await this.prisma.book.update({
       where: { id: book.id },
       data: {
-        status: BookStatus.illust_plan,
+        status: BookStatus.preview_ready,
         title: storyPlan.title,
         characterCard: characterCard as unknown as Prisma.InputJsonValue,
         storyPlan: storyPlanFinal as unknown as Prisma.InputJsonValue,
+        bookPreview: bookPreview as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -206,6 +261,14 @@ export class AgentService {
           bookId: book.id,
           agent: 'LocalPipelineAgent',
           step: AgentStep.illust_plan,
+          status: AgentLogStatus.success,
+          attempt: 1,
+          traceId,
+        },
+        {
+          bookId: book.id,
+          agent: 'LocalPipelineAgent',
+          step: AgentStep.preview_ready,
           status: AgentLogStatus.success,
           attempt: 1,
           traceId,

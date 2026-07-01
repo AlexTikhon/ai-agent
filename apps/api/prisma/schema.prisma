@@ -51,6 +51,7 @@ enum BookStatus {
   story_draft
   chapter_gen
   illust_plan
+  preview_ready
   image_gen
   qa_review
   layout
@@ -69,6 +70,7 @@ enum AgentStep {
   story_draft
   chapter_gen
   illust_plan
+  preview_ready
   char_consistency
   image_gen
   qa_review
@@ -277,6 +279,7 @@ model Book {
 
   characterCard    Json?       @map("character_card")
   storyPlan        Json?       @map("story_plan")
+  bookPreview      Json?       @map("book_preview")
   chapters         Json?
   imagePrompts     Json?       @map("image_prompts")
   qualityReport    Json?       @map("quality_report")

@@ -83,6 +83,46 @@ export interface StoryPlan {
   pages?: PagePlan[];
 }
 
+// ─── Book preview (render-ready PDF data contract) ───────────────────────────
+
+export interface BookPreviewCover {
+  title: string;
+  subtitle: string;
+  childName: string;
+  illustrationPrompt: string;
+}
+
+export interface BookPreviewPage {
+  pageNumber: number;
+  title: string;
+  text: string;
+  illustrationPrompt: string;
+  layout: string;
+  learningGoal: string;
+}
+
+export interface BookPreviewBackCover {
+  message: string;
+  educationalSummary: string;
+}
+
+export interface BookPreviewMetadata {
+  language: string;
+  theme: string;
+  childAge: number;
+  totalPages: number;
+  generatedBy: string;
+}
+
+export interface BookPreview {
+  title: string;
+  subtitle: string;
+  cover: BookPreviewCover;
+  pages: BookPreviewPage[];
+  backCover: BookPreviewBackCover;
+  metadata: BookPreviewMetadata;
+}
+
 // ─── Book content (per page) ─────────────────────────────────────────────────
 
 export interface ImagePrompt {
@@ -227,6 +267,7 @@ export interface BookDto {
   status: BookStatus;
   characterCard?: CharacterCard | null;
   storyPlan?: StoryPlan | null;
+  bookPreview?: BookPreview | null;
   createdAt: string;
   updatedAt: string;
 }
