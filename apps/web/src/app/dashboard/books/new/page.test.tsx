@@ -15,7 +15,9 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/link', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default: ({ href, children, className }: any) => (
-    <a href={href} className={className}>{children}</a>
+    <a href={href} className={className}>
+      {children}
+    </a>
   ),
 }));
 
@@ -48,7 +50,9 @@ describe('NewBookPage wizard', () => {
   const pushMock = vi.fn();
 
   beforeEach(() => {
-    vi.mocked(useRouter).mockReturnValue({ push: pushMock } as unknown as ReturnType<typeof useRouter>);
+    vi.mocked(useRouter).mockReturnValue({ push: pushMock } as unknown as ReturnType<
+      typeof useRouter
+    >);
     vi.stubGlobal('fetch', vi.fn());
     pushMock.mockReset();
   });

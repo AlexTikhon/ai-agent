@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { BookStatus, type Book } from '@prisma/client';
 import type { BookDto, BooksPageDto, GenerateBookResponse } from '@book/types';
 import { PrismaService } from '../database/prisma.service';

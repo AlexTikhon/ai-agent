@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import {
   Pronouns,
+  type BookLayout,
+  type BookLayoutEntry,
   type BookPreview,
   type CharacterCard,
   type GeneratedImageEntry,
@@ -61,7 +63,10 @@ function buildStoryPlan(name: string, theme: string): StoryPlan {
         summary: `${name} sets off on a journey and faces a small challenge with courage.`,
         setting: 'An enchanted forest',
         emotionalArc: 'nervousness to bravery',
-        keyEvents: [`${name} and friend enter the forest`, 'They face a small challenge and overcome it'],
+        keyEvents: [
+          `${name} and friend enter the forest`,
+          'They face a small challenge and overcome it',
+        ],
         illustrableScenes: [`${name} and friend walking through colorful mushrooms`],
       },
       {
@@ -156,7 +161,9 @@ const PAGE_LAYOUTS = ['image_top_text_bottom', 'text_left_image_right'] as const
 function buildBookPreview(
   book: Book,
   characterCard: CharacterCard,
-  storyPlanFinal: StoryPlan & { pages: Array<PagePlan & { storyText: string; illustration: IllustrationPlan }> },
+  storyPlanFinal: StoryPlan & {
+    pages: Array<PagePlan & { storyText: string; illustration: IllustrationPlan }>;
+  },
 ): BookPreview {
   const childName = book.childName ?? 'Alex';
   const childAge = book.childAge ?? 6;
@@ -253,6 +260,159 @@ function buildImageGenerationResult(
   };
 }
 
+// ── Layout engine constants ────────────────────────────────────────────────────
+
+const LAYOUT_CANVAS = { width: 2400, height: 2400, unit: 'px' as const };
+const LAYOUT_SAFE_AREA = { x: 180, y: 180, width: 2040, height: 2040 };
+const LAYOUT_BLEED = 90;
+const LAYOUT_DISPLAY_FONT = 'Fraunces';
+const LAYOUT_BODY_FONT = 'Plus Jakarta Sans';
+const LAYOUT_PAGE_TEMPLATES = [
+  'image_top_text_bottom',
+  'text_left_image_right',
+  'image_left_text_right',
+] as const;
+
+function buildBookLayout(
+  bookId: string,
+  bookPreview: BookPreview,
+  imageResult: ImageGenerationResult,
+): BookLayout {
+  const entries: BookLayoutEntry[] = [];
+
+  // Cover — full-bleed image with title overlay
+  const coverImage = imageResult.images.find((img) => img.kind === 'cover');
+  entries.push({
+    id: `${bookId}-layout-cover`,
+    kind: 'cover',
+    template: 'cover_full_bleed',
+    trimSize: 'square_8x8',
+    canvas: LAYOUT_CANVAS,
+    safeArea: LAYOUT_SAFE_AREA,
+    bleed: LAYOUT_BLEED,
+    ...(coverImage
+      ? {
+          imageBlock: {
+            box: { x: 0, y: 0, width: 2400, height: 2400 },
+            imageUrl: coverImage.imageUrl,
+            altText: coverImage.altText,
+            objectFit: 'cover' as const,
+          },
+        }
+      : {}),
+    textBlock: {
+      box: { x: 180, y: 1620, width: 2040, height: 600 },
+      text: bookPreview.cover.title,
+      fontFamily: LAYOUT_DISPLAY_FONT,
+      fontSize: 32,
+      lineHeight: 1.2,
+      align: 'center',
+      verticalAlign: 'bottom',
+      color: '#FFFFFF',
+    },
+    notes: ['Full-bleed cover image; title overlaid at bottom within safe area'],
+  });
+
+  // Interior pages — cycle through three templates deterministically
+  for (const page of bookPreview.pages) {
+    const pageImage = imageResult.images.find(
+      (img) => img.kind === 'page' && img.pageNumber === page.pageNumber,
+    );
+    const template = LAYOUT_PAGE_TEMPLATES[(page.pageNumber - 1) % LAYOUT_PAGE_TEMPLATES.length]!;
+
+    let imageBox: { x: number; y: number; width: number; height: number };
+    let textBox: { x: number; y: number; width: number; height: number };
+
+    if (template === 'image_top_text_bottom') {
+      imageBox = { x: 180, y: 180, width: 2040, height: 1210 };
+      textBox = { x: 180, y: 1420, width: 2040, height: 800 };
+    } else if (template === 'text_left_image_right') {
+      textBox = { x: 180, y: 180, width: 855, height: 2040 };
+      imageBox = { x: 1065, y: 180, width: 1155, height: 2040 };
+    } else {
+      imageBox = { x: 180, y: 180, width: 1230, height: 2040 };
+      textBox = { x: 1440, y: 180, width: 780, height: 2040 };
+    }
+
+    entries.push({
+      id: `${bookId}-layout-page-${page.pageNumber}`,
+      kind: 'page',
+      pageNumber: page.pageNumber,
+      template,
+      trimSize: 'square_8x8',
+      canvas: LAYOUT_CANVAS,
+      safeArea: LAYOUT_SAFE_AREA,
+      bleed: LAYOUT_BLEED,
+      ...(pageImage
+        ? {
+            imageBlock: {
+              box: imageBox,
+              imageUrl: pageImage.imageUrl,
+              altText: pageImage.altText,
+              objectFit: 'cover' as const,
+            },
+          }
+        : {}),
+      textBlock: {
+        box: textBox,
+        text: page.text,
+        fontFamily: LAYOUT_BODY_FONT,
+        fontSize: 18,
+        lineHeight: 1.5,
+        align: 'left',
+        verticalAlign: 'top',
+        color: '#1C1917',
+      },
+      notes: [`Template: ${template}`],
+    });
+  }
+
+  // Back cover — decorative image with summary text overlay
+  const backImage = imageResult.images.find((img) => img.kind === 'back_cover');
+  entries.push({
+    id: `${bookId}-layout-back-cover`,
+    kind: 'back_cover',
+    template: 'back_cover_summary',
+    trimSize: 'square_8x8',
+    canvas: LAYOUT_CANVAS,
+    safeArea: LAYOUT_SAFE_AREA,
+    bleed: LAYOUT_BLEED,
+    ...(backImage
+      ? {
+          imageBlock: {
+            box: { x: 0, y: 0, width: 2400, height: 2400 },
+            imageUrl: backImage.imageUrl,
+            altText: backImage.altText,
+            objectFit: 'cover' as const,
+          },
+        }
+      : {}),
+    textBlock: {
+      box: { x: 300, y: 600, width: 1800, height: 1200 },
+      text: `${bookPreview.backCover.message}\n\n${bookPreview.backCover.educationalSummary}`,
+      fontFamily: LAYOUT_BODY_FONT,
+      fontSize: 16,
+      lineHeight: 1.6,
+      align: 'center',
+      verticalAlign: 'middle',
+      color: '#FFFFFF',
+    },
+    notes: ['Back cover uses full-bleed image; summary text overlaid at center'],
+  });
+
+  return {
+    status: 'complete',
+    trimSize: 'square_8x8',
+    entries,
+    metadata: {
+      title: bookPreview.title,
+      childName: bookPreview.cover.childName,
+      totalPages: bookPreview.pages.length,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+    },
+  };
+}
+
 @Injectable()
 export class AgentService {
   constructor(private readonly prisma: PrismaService) {}
@@ -270,16 +430,18 @@ export class AgentService {
     const storyPlanFinal = buildIllustrationPlan(characterCard, storyPlanWithDraft);
     const bookPreview = buildBookPreview(book, characterCard, storyPlanFinal);
     const imageGenerationResult = buildImageGenerationResult(book.id, bookPreview);
+    const bookLayout = buildBookLayout(book.id, bookPreview, imageGenerationResult);
 
     const updated = await this.prisma.book.update({
       where: { id: book.id },
       data: {
-        status: BookStatus.image_gen,
+        status: BookStatus.layout,
         title: storyPlan.title,
         characterCard: characterCard as unknown as Prisma.InputJsonValue,
         storyPlan: storyPlanFinal as unknown as Prisma.InputJsonValue,
         bookPreview: bookPreview as unknown as Prisma.InputJsonValue,
         imageGenerationResult: imageGenerationResult as unknown as Prisma.InputJsonValue,
+        bookLayout: bookLayout as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -337,6 +499,14 @@ export class AgentService {
           bookId: book.id,
           agent: 'LocalPipelineAgent',
           step: AgentStep.image_gen,
+          status: AgentLogStatus.success,
+          attempt: 1,
+          traceId,
+        },
+        {
+          bookId: book.id,
+          agent: 'LocalPipelineAgent',
+          step: AgentStep.layout,
           status: AgentLogStatus.success,
           attempt: 1,
           traceId,

@@ -35,6 +35,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
     storyPlan: null,
     bookPreview: null,
     imageGenerationResult: null,
+    bookLayout: null,
     chapters: null,
     imagePrompts: null,
     qualityReport: null,
@@ -160,9 +161,7 @@ describe('BooksService', () => {
       const result = await service.findAllForUser('u-1', 1, 999);
 
       expect(result.limit).toBe(50);
-      expect(prisma.book.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 50 }),
-      );
+      expect(prisma.book.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 50 }));
     });
   });
 
@@ -185,17 +184,13 @@ describe('BooksService', () => {
       // findFirst returns null because the userId filter excludes the row
       prisma.book.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOneForUser('b-1', 'u-other')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findOneForUser('b-1', 'u-other')).rejects.toThrow(NotFoundException);
     });
 
     it('throws NotFoundException when book does not exist', async () => {
       prisma.book.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOneForUser('no-such-id', 'u-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findOneForUser('no-such-id', 'u-1')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -222,9 +217,7 @@ describe('BooksService', () => {
       const book = makeBook({ status: STATUS_IN_PROGRESS });
       prisma.book.findFirst.mockResolvedValue(book);
 
-      await expect(service.update('b-1', 'u-1', { title: 'X' })).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(service.update('b-1', 'u-1', { title: 'X' })).rejects.toThrow(ConflictException);
       expect(prisma.book.update).not.toHaveBeenCalled();
     });
   });

@@ -200,6 +200,76 @@ export interface PageLayout {
   backgroundGradient?: string;
 }
 
+// ─── Phase 2H: Layout engine data contract ────────────────────────────────────
+
+export type BookTrimSize = 'square_8x8';
+
+export type BookLayoutStatus = 'complete';
+
+export type BookLayoutKind = 'cover' | 'page' | 'back_cover';
+
+export type BookPageLayoutTemplate =
+  | 'cover_full_bleed'
+  | 'image_top_text_bottom'
+  | 'text_left_image_right'
+  | 'image_left_text_right'
+  | 'back_cover_summary';
+
+export interface LayoutBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface LayoutTextBlock {
+  box: LayoutBox;
+  text: string;
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  align: 'left' | 'center' | 'right';
+  verticalAlign: 'top' | 'middle' | 'bottom';
+  color: string;
+}
+
+export interface LayoutImageBlock {
+  box: LayoutBox;
+  imageUrl: string;
+  altText: string;
+  objectFit: 'cover' | 'contain';
+}
+
+export interface BookLayoutEntry {
+  id: string;
+  kind: BookLayoutKind;
+  pageNumber?: number;
+  template: BookPageLayoutTemplate;
+  trimSize: BookTrimSize;
+  canvas: {
+    width: number;
+    height: number;
+    unit: 'px';
+  };
+  safeArea: LayoutBox;
+  bleed: number;
+  textBlock?: LayoutTextBlock;
+  imageBlock?: LayoutImageBlock;
+  notes: string[];
+}
+
+export interface BookLayout {
+  status: BookLayoutStatus;
+  trimSize: BookTrimSize;
+  entries: BookLayoutEntry[];
+  metadata: {
+    title: string;
+    childName: string;
+    totalPages: number;
+    generatedAt: string;
+  };
+}
+
 // ─── Generated image result (future real pipeline) ────────────────────────────
 
 export interface GeneratedImage {
@@ -293,6 +363,7 @@ export interface BookDto {
   storyPlan?: StoryPlan | null;
   bookPreview?: BookPreview | null;
   imageGenerationResult?: ImageGenerationResult | null;
+  bookLayout?: BookLayout | null;
   createdAt: string;
   updatedAt: string;
 }

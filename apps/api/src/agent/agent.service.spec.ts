@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { Book } from '@prisma/client';
 import { AgentService } from './agent.service';
 import { createMockPrisma } from '../common/test-utils/mock-prisma';
@@ -23,6 +23,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
     storyPlan: null,
     bookPreview: null,
     imageGenerationResult: null,
+    bookLayout: null,
     chapters: null,
     imagePrompts: null,
     qualityReport: null,
@@ -64,13 +65,13 @@ describe('AgentService', () => {
 
   describe('startBookGeneration', () => {
     function setupMocks(bookOverrides: Partial<Book> = {}) {
-      const updatedBook = makeBook({ status: 'image_gen' as Book['status'], ...bookOverrides });
+      const updatedBook = makeBook({ status: 'layout' as Book['status'], ...bookOverrides });
       prisma.book.update.mockResolvedValue(updatedBook);
-      prisma.agentLog.createMany.mockResolvedValue({ count: 7 });
+      prisma.agentLog.createMany.mockResolvedValue({ count: 8 });
       return updatedBook;
     }
 
-    it('advances book status to image_gen', async () => {
+    it('advances book status to layout', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -79,7 +80,7 @@ describe('AgentService', () => {
       expect(prisma.book.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'b-1' },
-          data: expect.objectContaining({ status: 'image_gen' }),
+          data: expect.objectContaining({ status: 'layout' }),
         }),
       );
     });
@@ -213,7 +214,7 @@ describe('AgentService', () => {
       expect(updateArg?.data?.title).toContain('Mia');
     });
 
-    it('writes seven AgentLog records all sharing the same traceId', async () => {
+    it('writes eight AgentLog records all sharing the same traceId', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -222,7 +223,7 @@ describe('AgentService', () => {
       expect(prisma.agentLog.createMany).toHaveBeenCalledOnce();
       const createManyArg = prisma.agentLog.createMany.mock.calls[0]?.[0];
       const entries = createManyArg?.data as Array<Record<string, unknown>>;
-      expect(entries).toHaveLength(7);
+      expect(entries).toHaveLength(8);
       expect(entries[0]?.step).toBe('char_build');
       expect(entries[1]?.step).toBe('story_plan');
       expect(entries[2]?.step).toBe('page_plan');
@@ -230,6 +231,7 @@ describe('AgentService', () => {
       expect(entries[4]?.step).toBe('illust_plan');
       expect(entries[5]?.step).toBe('preview_ready');
       expect(entries[6]?.step).toBe('image_gen');
+      expect(entries[7]?.step).toBe('layout');
       const traceId = entries[0]?.traceId;
       expect(typeof traceId).toBe('string');
       for (const entry of entries) {
@@ -510,7 +512,9 @@ describe('AgentService', () => {
       const updateArg = prisma.book.update.mock.calls[0]?.[0];
       const result = updateArg?.data?.imageGenerationResult as Record<string, unknown>;
       const images = result.images as Array<Record<string, unknown>>;
-      const pageImages = images.filter((img) => img.kind === 'page') as Array<Record<string, unknown>>;
+      const pageImages = images.filter((img) => img.kind === 'page') as Array<
+        Record<string, unknown>
+      >;
       for (const img of pageImages) {
         const pageNum = img.pageNumber as number;
         expect(img.imageUrl).toBe(`/mock-images/b-1/page-${pageNum}.svg`);
@@ -559,6 +563,196 @@ describe('AgentService', () => {
       const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
       expect(preview).toBeDefined();
       expect(typeof preview?.title).toBe('string');
+    });
+
+    // ── Phase 2H: Layout engine ───────────────────────────────────────────────
+
+    it('stores bookLayout in the book update', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      expect(layout).toBeDefined();
+      expect(layout).not.toBeNull();
+    });
+
+    it('bookLayout.status is complete', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      expect(layout.status).toBe('complete');
+    });
+
+    it('bookLayout.trimSize is square_8x8', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      expect(layout.trimSize).toBe('square_8x8');
+    });
+
+    it('bookLayout.entries contains a cover entry', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const entries = layout.entries as Array<Record<string, unknown>>;
+      const coverEntry = entries.find((e) => e.kind === 'cover');
+      expect(coverEntry).toBeDefined();
+      expect(coverEntry?.template).toBe('cover_full_bleed');
+    });
+
+    it('bookLayout.entries contains one entry per preview page', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const previewPages = preview.pages as unknown[];
+      const entries = layout.entries as Array<Record<string, unknown>>;
+      const pageEntries = entries.filter((e) => e.kind === 'page');
+      expect(pageEntries.length).toBe(previewPages.length);
+    });
+
+    it('bookLayout.entries contains a back_cover entry', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const entries = layout.entries as Array<Record<string, unknown>>;
+      const backEntry = entries.find((e) => e.kind === 'back_cover');
+      expect(backEntry).toBeDefined();
+      expect(backEntry?.template).toBe('back_cover_summary');
+    });
+
+    it('every layout entry has canvas 2400x2400px (print-ready)', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const entries = layout.entries as Array<Record<string, unknown>>;
+      for (const entry of entries) {
+        const canvas = entry.canvas as Record<string, unknown>;
+        expect(canvas.width).toBe(2400);
+        expect(canvas.height).toBe(2400);
+        expect(canvas.unit).toBe('px');
+      }
+    });
+
+    it('every layout entry has trimSize square_8x8', async () => {
+      const book = makeBook();
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const entries = layout.entries as Array<Record<string, unknown>>;
+      for (const entry of entries) {
+        expect(entry.trimSize).toBe('square_8x8');
+      }
+    });
+
+    it('page entries have deterministic templates cycling across three variants', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const entries = layout.entries as Array<Record<string, unknown>>;
+      const pageEntries = entries.filter((e) => e.kind === 'page');
+      const expectedTemplates = [
+        'image_top_text_bottom',
+        'text_left_image_right',
+        'image_left_text_right',
+      ];
+      for (let i = 0; i < pageEntries.length; i++) {
+        expect(pageEntries[i]?.template).toBe(expectedTemplates[i % expectedTemplates.length]);
+      }
+    });
+
+    it('cover entry imageBlock.imageUrl matches the cover image from imageGenerationResult', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const entries = layout.entries as Array<Record<string, unknown>>;
+      const coverEntry = entries.find((e) => e.kind === 'cover');
+      const imageBlock = coverEntry?.imageBlock as Record<string, unknown>;
+      expect(imageBlock?.imageUrl).toBe('/mock-images/b-1/cover.svg');
+    });
+
+    it('bookLayout.metadata.title matches bookPreview.title', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const preview = updateArg?.data?.bookPreview as Record<string, unknown>;
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const meta = layout.metadata as Record<string, unknown>;
+      expect(meta.title).toBe(preview.title);
+    });
+
+    it('bookLayout.metadata.childName equals the book childName', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const layout = updateArg?.data?.bookLayout as Record<string, unknown>;
+      const meta = layout.metadata as Record<string, unknown>;
+      expect(meta.childName).toBe('Mia');
+    });
+
+    it('bookLayout is deterministic for the same input', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+      await service.startBookGeneration(book);
+      const firstArg = prisma.book.update.mock.calls[0]?.[0];
+      const firstLayout = firstArg?.data?.bookLayout as Record<string, unknown>;
+      const firstEntries = (firstLayout.entries as Array<Record<string, unknown>>).map((e) => e.id);
+
+      prisma.book.update.mockClear();
+      prisma.agentLog.createMany.mockClear();
+      setupMocks();
+      await service.startBookGeneration(book);
+      const secondArg = prisma.book.update.mock.calls[0]?.[0];
+      const secondLayout = secondArg?.data?.bookLayout as Record<string, unknown>;
+      const secondEntries = (secondLayout.entries as Array<Record<string, unknown>>).map(
+        (e) => e.id,
+      );
+
+      expect(secondEntries).toEqual(firstEntries);
     });
   });
 });

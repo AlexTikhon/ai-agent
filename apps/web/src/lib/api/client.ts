@@ -3,7 +3,10 @@ const DEV_EMAIL = 'dev@storyme.local';
 const DEV_NAME = 'Dev User';
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
     super(message);
     this.name = 'ApiError';
   }

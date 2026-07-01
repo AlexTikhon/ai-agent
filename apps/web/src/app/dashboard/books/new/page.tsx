@@ -80,9 +80,7 @@ export default function NewBookPage() {
         <StepIndicator current={step} />
 
         <div className="rounded-2xl border border-border-default bg-bg-surface p-6 shadow-sm">
-          {step === 1 && (
-            <StepChild values={values} onChange={patch} onNext={() => setStep(2)} />
-          )}
+          {step === 1 && <StepChild values={values} onChange={patch} onNext={() => setStep(2)} />}
           {step === 2 && (
             <StepStory
               values={values}
@@ -95,7 +93,9 @@ export default function NewBookPage() {
             <StepReview
               values={values}
               onBack={() => setStep(2)}
-              onSubmit={() => { void handleCreate(); }}
+              onSubmit={() => {
+                void handleCreate();
+              }}
               submitting={submitting}
               error={submitError}
             />
@@ -166,7 +166,9 @@ function StepChild({ values, onChange, onNext }: StepChildProps) {
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
             Child&apos;s name{' '}
-            <span className="text-danger-base" aria-hidden="true">*</span>
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <input
             required
@@ -180,7 +182,9 @@ function StepChild({ values, onChange, onNext }: StepChildProps) {
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
             Age{' '}
-            <span className="text-danger-base" aria-hidden="true">*</span>
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <input
             required
@@ -228,7 +232,9 @@ function StepStory({ values, onChange, onBack, onNext }: StepStoryProps) {
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
             Language{' '}
-            <span className="text-danger-base" aria-hidden="true">*</span>
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <select
             value={values.language}
@@ -245,7 +251,9 @@ function StepStory({ values, onChange, onBack, onNext }: StepStoryProps) {
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
             Theme{' '}
-            <span className="text-danger-base" aria-hidden="true">*</span>
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <input
             required
@@ -289,10 +297,15 @@ interface StepReviewProps {
 function StepReview({ values, onBack, onSubmit, submitting, error }: StepReviewProps) {
   return (
     <div>
-      <h2 className="mb-5 font-display text-xl font-semibold text-text-primary">Review &amp; create</h2>
+      <h2 className="mb-5 font-display text-xl font-semibold text-text-primary">
+        Review &amp; create
+      </h2>
 
       {error && (
-        <p role="alert" className="mb-4 rounded-lg bg-danger-light px-4 py-3 text-sm text-danger-base">
+        <p
+          role="alert"
+          className="mb-4 rounded-lg bg-danger-light px-4 py-3 text-sm text-danger-base"
+        >
           {error}
         </p>
       )}

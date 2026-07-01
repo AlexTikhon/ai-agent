@@ -4,7 +4,17 @@ import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { SupportedLanguage, BookStatus } from '@book/types';
-import type { BookDto, BookPreview, BookPreviewPage, GeneratedImageEntry, IllustrationPlan, ImageGenerationResult, PagePlan } from '@book/types';
+import type {
+  BookDto,
+  BookLayout,
+  BookLayoutEntry,
+  BookPreview,
+  BookPreviewPage,
+  GeneratedImageEntry,
+  IllustrationPlan,
+  ImageGenerationResult,
+  PagePlan,
+} from '@book/types';
 import { booksApi } from '@/lib/api/books';
 import { ApiError } from '@/lib/api/client';
 
@@ -86,23 +96,28 @@ export default function BookDetailPage() {
     setNotFound(false);
     setBook(null);
 
-    booksApi.get(id).then((data) => {
-      if (!cancelled) {
-        setBook(data);
-        setLoading(false);
-      }
-    }).catch((err: unknown) => {
-      if (!cancelled) {
-        if (err instanceof ApiError && err.status === 404) {
-          setNotFound(true);
-        } else {
-          setLoadError(err instanceof Error ? err.message : 'Failed to load book');
+    booksApi
+      .get(id)
+      .then((data) => {
+        if (!cancelled) {
+          setBook(data);
+          setLoading(false);
         }
-        setLoading(false);
-      }
-    });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          if (err instanceof ApiError && err.status === 404) {
+            setNotFound(true);
+          } else {
+            setLoadError(err instanceof Error ? err.message : 'Failed to load book');
+          }
+          setLoading(false);
+        }
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const startEdit = () => {
@@ -196,12 +211,19 @@ export default function BookDetailPage() {
 
             <div className="rounded-2xl border border-border-default bg-bg-surface p-6 shadow-sm">
               {editing ? (
-                <form onSubmit={(e) => { void handleSave(e); }}>
+                <form
+                  onSubmit={(e) => {
+                    void handleSave(e);
+                  }}
+                >
                   <h2 className="mb-5 font-display text-xl font-semibold text-text-primary">
                     Edit Book
                   </h2>
                   {editError && (
-                    <p role="alert" className="mb-4 rounded-lg bg-danger-light px-4 py-3 text-sm text-danger-base">
+                    <p
+                      role="alert"
+                      className="mb-4 rounded-lg bg-danger-light px-4 py-3 text-sm text-danger-base"
+                    >
                       {editError}
                     </p>
                   )}
@@ -216,9 +238,13 @@ export default function BookDetailPage() {
                 <BookDetailView
                   book={book}
                   onEdit={startEdit}
-                  onDelete={() => { void handleDelete(); }}
+                  onDelete={() => {
+                    void handleDelete();
+                  }}
                   deleting={deleting}
-                  onGenerate={() => { void handleGenerate(); }}
+                  onGenerate={() => {
+                    void handleGenerate();
+                  }}
                   generating={generating}
                   generateError={generateError}
                 />
@@ -243,7 +269,15 @@ interface BookDetailViewProps {
   generateError: string | null;
 }
 
-function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generating, generateError }: BookDetailViewProps) {
+function BookDetailView({
+  book,
+  onEdit,
+  onDelete,
+  deleting,
+  onGenerate,
+  generating,
+  generateError,
+}: BookDetailViewProps) {
   const isDraft = book.status === BookStatus.Created;
   const missingFields = getMissingDraftFields(book);
   const canGenerate = isDraft && missingFields.length === 0;
@@ -254,6 +288,7 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
   const illustrationPages = pages?.filter((p) => p.illustration);
   const bookPreview = book.bookPreview ?? null;
   const imageGenerationResult = book.imageGenerationResult ?? null;
+  const bookLayout = book.bookLayout ?? null;
 
   return (
     <div>
@@ -290,15 +325,11 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
         )}
         <div className="flex justify-between py-2.5">
           <dt className="font-medium text-text-muted">Created</dt>
-          <dd className="text-text-primary">
-            {new Date(book.createdAt).toLocaleDateString()}
-          </dd>
+          <dd className="text-text-primary">{new Date(book.createdAt).toLocaleDateString()}</dd>
         </div>
         <div className="flex justify-between py-2.5">
           <dt className="font-medium text-text-muted">Updated</dt>
-          <dd className="text-text-primary">
-            {new Date(book.updatedAt).toLocaleDateString()}
-          </dd>
+          <dd className="text-text-primary">{new Date(book.updatedAt).toLocaleDateString()}</dd>
         </div>
       </dl>
 
@@ -327,7 +358,10 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
           </h2>
           <ul className="space-y-3">
             {pages.map((page) => (
-              <li key={page.pageNumber} className="rounded-lg border border-indigo-100 bg-white p-3 text-sm">
+              <li
+                key={page.pageNumber}
+                className="rounded-lg border border-indigo-100 bg-white p-3 text-sm"
+              >
                 <div className="mb-1 flex items-center gap-2">
                   <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
                     Page {page.pageNumber}
@@ -356,7 +390,10 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
           </h2>
           <ul className="space-y-3">
             {draftPages.map((page) => (
-              <li key={page.pageNumber} className="rounded-lg border border-emerald-100 bg-white p-3 text-sm">
+              <li
+                key={page.pageNumber}
+                className="rounded-lg border border-emerald-100 bg-white p-3 text-sm"
+              >
                 <div className="mb-1.5 flex items-center gap-2">
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                     Page {page.pageNumber}
@@ -377,7 +414,10 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
           </h2>
           <ul className="space-y-3">
             {illustrationPages.map((page) => (
-              <li key={page.pageNumber} className="rounded-lg border border-amber-100 bg-white p-3 text-sm">
+              <li
+                key={page.pageNumber}
+                className="rounded-lg border border-amber-100 bg-white p-3 text-sm"
+              >
                 <div className="mb-2 flex items-center gap-2">
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
                     Page {page.pageNumber}
@@ -394,6 +434,8 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
 
       {imageGenerationResult && <ImageGenerationSection result={imageGenerationResult} />}
 
+      {bookLayout && <BookLayoutSection layout={bookLayout} />}
+
       {!isDraft && (
         <p className="mb-4 rounded-lg bg-violet-50 px-4 py-3 text-sm text-violet-700">
           Generation has started. This draft can no longer be edited.
@@ -407,7 +449,10 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
       )}
 
       {generateError && (
-        <p role="alert" className="mb-4 rounded-lg bg-danger-light px-4 py-3 text-sm text-danger-base">
+        <p
+          role="alert"
+          className="mb-4 rounded-lg bg-danger-light px-4 py-3 text-sm text-danger-base"
+        >
           {generateError}
         </p>
       )}
@@ -458,7 +503,8 @@ function BookPreviewSection({ preview }: { preview: BookPreview }) {
         <p className="mb-0.5 font-semibold text-text-primary">{preview.title}</p>
         <p className="mb-2 text-xs text-text-muted">{preview.subtitle}</p>
         <div className="mb-1 text-xs text-teal-700">
-          <span className="font-medium">Cover illustration:</span> {preview.cover.illustrationPrompt}
+          <span className="font-medium">Cover illustration:</span>{' '}
+          {preview.cover.illustrationPrompt}
         </div>
       </div>
 
@@ -526,9 +572,7 @@ function ImageGenerationSection({ result }: { result: ImageGenerationResult }) {
 
   return (
     <div className="mb-6 rounded-xl border border-sky-100 bg-sky-50 p-4">
-      <h2 className="mb-3 font-display text-base font-semibold text-sky-800">
-        Images are ready
-      </h2>
+      <h2 className="mb-3 font-display text-base font-semibold text-sky-800">Images are ready</h2>
 
       <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-text-muted">
         <div>
@@ -578,8 +622,93 @@ function ImageEntryCard({ image }: { image: GeneratedImageEntry }) {
       </p>
       <p className="text-text-muted">
         <span className="font-medium">Size: </span>
-        <span className="text-text-secondary">{image.width}×{image.height}px</span>
+        <span className="text-text-secondary">
+          {image.width}×{image.height}px
+        </span>
       </p>
+    </li>
+  );
+}
+
+// ── BookLayoutSection ─────────────────────────────────────────────────────────
+
+function BookLayoutSection({ layout }: { layout: BookLayout }) {
+  const coverEntry = layout.entries.find((e) => e.kind === 'cover');
+  const pageEntries = layout.entries.filter((e) => e.kind === 'page');
+  const backCoverEntry = layout.entries.find((e) => e.kind === 'back_cover');
+
+  return (
+    <div className="mb-6 rounded-xl border border-rose-100 bg-rose-50 p-4">
+      <h2 className="mb-3 font-display text-base font-semibold text-rose-800">Layout is ready</h2>
+
+      <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-text-muted">
+        <div>
+          <dt className="inline font-medium">Trim size: </dt>
+          <dd className="inline text-text-secondary">{layout.trimSize}</dd>
+        </div>
+        <div>
+          <dt className="inline font-medium">Status: </dt>
+          <dd className="inline text-text-secondary">{layout.status}</dd>
+        </div>
+        <div>
+          <dt className="inline font-medium">Pages: </dt>
+          <dd className="inline text-text-secondary">{layout.metadata.totalPages}</dd>
+        </div>
+        <div>
+          <dt className="inline font-medium">Entries: </dt>
+          <dd className="inline text-text-secondary">{layout.entries.length}</dd>
+        </div>
+      </dl>
+
+      <ul className="space-y-2">
+        {coverEntry && <LayoutEntryCard entry={coverEntry} />}
+        {pageEntries.map((entry) => (
+          <LayoutEntryCard key={entry.id} entry={entry} />
+        ))}
+        {backCoverEntry && <LayoutEntryCard entry={backCoverEntry} />}
+      </ul>
+    </div>
+  );
+}
+
+function LayoutEntryCard({ entry }: { entry: BookLayoutEntry }) {
+  const kindLabel =
+    entry.kind === 'cover'
+      ? 'Cover'
+      : entry.kind === 'back_cover'
+        ? 'Back Cover'
+        : `Page ${entry.pageNumber}`;
+
+  return (
+    <li className="rounded-lg border border-rose-100 bg-white p-3 text-xs">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+          {kindLabel}
+        </span>
+        <span className="font-mono text-text-muted">{entry.template}</span>
+      </div>
+      <p className="mb-0.5 text-text-muted">
+        <span className="font-medium">Canvas: </span>
+        <span className="text-text-secondary">
+          {entry.canvas.width}×{entry.canvas.height}
+          {entry.canvas.unit}
+        </span>
+      </p>
+      {entry.imageBlock && (
+        <p className="mb-0.5 text-text-muted">
+          <span className="font-medium">Image: </span>
+          <span className="font-mono text-text-secondary">{entry.imageBlock.imageUrl}</span>
+        </p>
+      )}
+      {entry.textBlock && (
+        <p className="text-text-muted">
+          <span className="font-medium">Text: </span>
+          <span className="text-text-secondary">
+            {entry.textBlock.text.slice(0, 80)}
+            {entry.textBlock.text.length > 80 ? '…' : ''}
+          </span>
+        </p>
+      )}
     </li>
   );
 }
@@ -642,7 +771,10 @@ function EditFormFields({ values, onChange, submitting, onCancel }: EditFormFiel
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
-            Child&apos;s name <span className="text-danger-base" aria-hidden="true">*</span>
+            Child&apos;s name{' '}
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <input
             value={values.childName}
@@ -655,7 +787,10 @@ function EditFormFields({ values, onChange, submitting, onCancel }: EditFormFiel
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
-            Age <span className="text-danger-base" aria-hidden="true">*</span>
+            Age{' '}
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <input
             type="number"
@@ -669,7 +804,10 @@ function EditFormFields({ values, onChange, submitting, onCancel }: EditFormFiel
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
-            Language <span className="text-danger-base" aria-hidden="true">*</span>
+            Language{' '}
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <select
             value={values.language}
@@ -686,7 +824,10 @@ function EditFormFields({ values, onChange, submitting, onCancel }: EditFormFiel
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-secondary">
-            Theme <span className="text-danger-base" aria-hidden="true">*</span>
+            Theme{' '}
+            <span className="text-danger-base" aria-hidden="true">
+              *
+            </span>
           </span>
           <input
             value={values.theme}

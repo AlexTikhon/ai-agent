@@ -4,7 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { useRouter, useParams } from 'next/navigation';
 import BookDetailPage from './page';
 import { SupportedLanguage, BookStatus } from '@book/types';
-import type { BookDto, BookPreview, GeneratedImageEntry, IllustrationPlan, ImageGenerationResult, PagePlan } from '@book/types';
+import type {
+  BookDto,
+  BookPreview,
+  GeneratedImageEntry,
+  IllustrationPlan,
+  ImageGenerationResult,
+  PagePlan,
+} from '@book/types';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -16,7 +23,9 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/link', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default: ({ href, children, className }: any) => (
-    <a href={href} className={className}>{children}</a>
+    <a href={href} className={className}>
+      {children}
+    </a>
   ),
 }));
 
@@ -124,7 +133,8 @@ function makeBookPreview(childName = 'Emma'): BookPreview {
     ],
     backCover: {
       message: `The End! We hope ${childName} enjoyed this adventure. Keep exploring, keep dreaming!`,
-      educationalSummary: 'Through friendship, we learn the importance of courage, kindness, and believing in ourselves.',
+      educationalSummary:
+        'Through friendship, we learn the importance of courage, kindness, and believing in ourselves.',
     },
     metadata: {
       language: 'en',
@@ -151,7 +161,9 @@ describe('BookDetailPage', () => {
 
   beforeEach(() => {
     vi.mocked(useParams).mockReturnValue({ id: 'book-1' });
-    vi.mocked(useRouter).mockReturnValue({ push: pushMock } as unknown as ReturnType<typeof useRouter>);
+    vi.mocked(useRouter).mockReturnValue({ push: pushMock } as unknown as ReturnType<
+      typeof useRouter
+    >);
     vi.stubGlobal('fetch', vi.fn());
     pushMock.mockReset();
   });
@@ -221,8 +233,8 @@ describe('BookDetailPage', () => {
     const user = userEvent.setup();
     const updated = { ...MOCK_BOOK, theme: 'Adventure' };
     vi.mocked(fetch)
-      .mockResolvedValueOnce(mockOk(MOCK_BOOK))   // initial GET
-      .mockResolvedValueOnce(mockOk(updated));      // PATCH
+      .mockResolvedValueOnce(mockOk(MOCK_BOOK)) // initial GET
+      .mockResolvedValueOnce(mockOk(updated)); // PATCH
 
     render(<BookDetailPage />);
     await waitFor(() => screen.getByRole('heading', { level: 1, name: "Emma's Story" }));
@@ -282,7 +294,11 @@ describe('BookDetailPage', () => {
 
   it('updates book status badge to preview_ready after successful generation', async () => {
     const user = userEvent.setup();
-    const generated = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    const generated = {
+      ...MOCK_BOOK,
+      status: BookStatus.PreviewReady,
+      bookPreview: makeBookPreview(),
+    };
     vi.mocked(fetch)
       .mockResolvedValueOnce(mockOk(MOCK_BOOK))
       .mockResolvedValueOnce(mockOk({ book: generated }));
@@ -495,7 +511,8 @@ describe('BookDetailPage', () => {
         narration: 'It all began with a glowing light.',
         illustrationPrompt: "Children's book illustration: Emma discovering a glowing light",
         learningGoal: 'Through friendship, we learn kindness.',
-        storyText: 'One sunny morning, Emma discovered something magical. It all began with a glowing light. Emma knew deep down: Through friendship, we learn kindness.',
+        storyText:
+          'One sunny morning, Emma discovered something magical. It all began with a glowing light. Emma knew deep down: Through friendship, we learn kindness.',
       },
     ];
     const storyPlan = {
@@ -528,7 +545,9 @@ describe('BookDetailPage', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /story draft is ready/i })).toBeDefined();
-      expect(screen.getByText(/one sunny morning, emma discovered something magical/i)).toBeDefined();
+      expect(
+        screen.getByText(/one sunny morning, emma discovered something magical/i),
+      ).toBeDefined();
     });
   });
 
@@ -542,7 +561,8 @@ describe('BookDetailPage', () => {
         narration: 'It all began with courage.',
         illustrationPrompt: "Children's book illustration: Emma at school",
         learningGoal: 'Courage helps us grow.',
-        storyText: 'One sunny morning, Emma took her first brave step. It all began with courage. Emma knew deep down: Courage helps us grow.',
+        storyText:
+          'One sunny morning, Emma took her first brave step. It all began with courage. Emma knew deep down: Courage helps us grow.',
       },
       {
         pageNumber: 2,
@@ -552,7 +572,8 @@ describe('BookDetailPage', () => {
         narration: 'The story continued as pride filled the air.',
         illustrationPrompt: "Children's book illustration: Emma with friends",
         learningGoal: 'Courage helps us grow.',
-        storyText: 'Emma thought about courage and took another brave step. The story continued as pride filled the air. Emma knew deep down: Courage helps us grow.',
+        storyText:
+          'Emma thought about courage and took another brave step. The story continued as pride filled the air. Emma knew deep down: Courage helps us grow.',
       },
     ];
     const storyPlan = {
@@ -627,7 +648,8 @@ describe('BookDetailPage', () => {
   it('renders the illustration plan section when pages include illustration in the generation response', async () => {
     const user = userEvent.setup();
     const illustration: IllustrationPlan = {
-      prompt: 'A child with wavy brown hair, Emma discovering a glowing light. Children\'s book illustration.',
+      prompt:
+        "A child with wavy brown hair, Emma discovering a glowing light. Children's book illustration.",
       negativePrompt: 'blurry, distorted face, extra limbs, scary, violent, text, watermark',
       style: 'warm children book illustration, soft colors, friendly character design',
       aspectRatio: '4:3',
@@ -686,7 +708,8 @@ describe('BookDetailPage', () => {
 
   it('renders the illustration plan section when book loads with illustration already on pages', async () => {
     const illustration: IllustrationPlan = {
-      prompt: 'A child with wavy brown hair, Emma taking her first brave step. Children\'s book illustration.',
+      prompt:
+        "A child with wavy brown hair, Emma taking her first brave step. Children's book illustration.",
       negativePrompt: 'blurry, distorted face, extra limbs, scary, violent, text, watermark',
       style: 'warm children book illustration, soft colors, friendly character design',
       aspectRatio: '4:3',
@@ -825,8 +848,12 @@ describe('BookDetailPage', () => {
     render(<BookDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('One sunny morning, Emma discovered something magical.')).toBeDefined();
-      expect(screen.getByText(/A child with wavy brown hair, Emma discovering a glowing light/i)).toBeDefined();
+      expect(
+        screen.getByText('One sunny morning, Emma discovered something magical.'),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/A child with wavy brown hair, Emma discovering a glowing light/i),
+      ).toBeDefined();
     });
   });
 
@@ -858,7 +885,11 @@ describe('BookDetailPage', () => {
   });
 
   it('renders preview_ready status badge correctly', async () => {
-    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    const bookWithPreview = {
+      ...MOCK_BOOK,
+      status: BookStatus.PreviewReady,
+      bookPreview: makeBookPreview(),
+    };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
 
     render(<BookDetailPage />);
@@ -869,7 +900,11 @@ describe('BookDetailPage', () => {
   });
 
   it('hides Edit and Delete buttons when status is preview_ready', async () => {
-    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    const bookWithPreview = {
+      ...MOCK_BOOK,
+      status: BookStatus.PreviewReady,
+      bookPreview: makeBookPreview(),
+    };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
 
     render(<BookDetailPage />);
@@ -883,7 +918,11 @@ describe('BookDetailPage', () => {
   });
 
   it('shows "Generation has started" note when status is preview_ready', async () => {
-    const bookWithPreview = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    const bookWithPreview = {
+      ...MOCK_BOOK,
+      status: BookStatus.PreviewReady,
+      bookPreview: makeBookPreview(),
+    };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPreview));
 
     render(<BookDetailPage />);
@@ -1080,7 +1119,11 @@ describe('BookDetailPage', () => {
   });
 
   it('renders without crashing when imageGenerationResult is absent (old books)', async () => {
-    const oldBook = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    const oldBook = {
+      ...MOCK_BOOK,
+      status: BookStatus.PreviewReady,
+      bookPreview: makeBookPreview(),
+    };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(oldBook));
 
     render(<BookDetailPage />);

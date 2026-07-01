@@ -281,6 +281,7 @@ model Book {
   storyPlan             Json?       @map("story_plan")
   bookPreview           Json?       @map("book_preview")
   imageGenerationResult Json?       @map("image_generation_result")
+  bookLayout            Json?       @map("book_layout")
   chapters              Json?
   imagePrompts     Json?       @map("image_prompts")
   qualityReport    Json?       @map("quality_report")

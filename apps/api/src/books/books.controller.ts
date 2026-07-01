@@ -55,10 +55,7 @@ export class BooksController {
 
   @Post(':id/generate')
   @HttpCode(200)
-  generate(
-    @CurrentUser() user: User,
-    @Param('id') id: string,
-  ): Promise<GenerateBookResponse> {
+  generate(@CurrentUser() user: User, @Param('id') id: string): Promise<GenerateBookResponse> {
     return this.booksService.startGeneration(user.id, id);
   }
 

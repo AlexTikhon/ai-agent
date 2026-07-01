@@ -3,6 +3,7 @@ import {
   BookStatus,
   SupportedLanguage,
   type BookDto,
+  type BookLayout,
   type BookPreview,
   type CharacterCard,
   type ImageGenerationResult,
@@ -23,6 +24,7 @@ export function toBookDto(book: Book): BookDto {
     storyPlan: book.storyPlan as unknown as StoryPlan | null,
     bookPreview: book.bookPreview as unknown as BookPreview | null,
     imageGenerationResult: book.imageGenerationResult as unknown as ImageGenerationResult | null,
+    bookLayout: book.bookLayout as unknown as BookLayout | null,
     createdAt: book.createdAt.toISOString(),
     updatedAt: book.updatedAt.toISOString(),
   };

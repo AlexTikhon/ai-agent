@@ -107,7 +107,9 @@ describe('booksApi', () => {
 
   describe('generate()', () => {
     it('sends POST /books/:id/generate and returns GenerateBookResponse', async () => {
-      const generated: GenerateBookResponse = { book: { ...MOCK_BOOK, status: BookStatus.CharBuild } };
+      const generated: GenerateBookResponse = {
+        book: { ...MOCK_BOOK, status: BookStatus.CharBuild },
+      };
       vi.mocked(fetch).mockResolvedValueOnce(mockOk(generated));
 
       const result = await booksApi.generate('book-1');
@@ -146,16 +148,24 @@ describe('booksApi', () => {
         mockError(400, ['childAge must not be less than 1', 'theme must be a string']),
       );
 
-      await expect(booksApi.create({ title: 'x', childName: 'x', childAge: 0, language: SupportedLanguage.English, theme: '' })).rejects.toThrow(
-        'childAge must not be less than 1, theme must be a string',
-      );
+      await expect(
+        booksApi.create({
+          title: 'x',
+          childName: 'x',
+          childAge: 0,
+          language: SupportedLanguage.English,
+          theme: '',
+        }),
+      ).rejects.toThrow('childAge must not be less than 1, theme must be a string');
     });
 
     it('falls back to HTTP status when body has no message', async () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 500,
-        json: async () => { throw new Error('not json'); },
+        json: async () => {
+          throw new Error('not json');
+        },
       } as unknown as Response);
 
       await expect(booksApi.list()).rejects.toThrow('HTTP 500');

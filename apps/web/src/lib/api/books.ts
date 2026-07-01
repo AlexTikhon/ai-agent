@@ -1,12 +1,17 @@
-import type { BookDto, BooksPageDto, CreateBookInput, GenerateBookResponse, UpdateBookInput } from '@book/types';
+import type {
+  BookDto,
+  BooksPageDto,
+  CreateBookInput,
+  GenerateBookResponse,
+  UpdateBookInput,
+} from '@book/types';
 import { apiFetch } from './client';
 
 export const booksApi = {
   list: (page = 1, limit = 20): Promise<BooksPageDto> =>
     apiFetch(`/books?page=${page}&limit=${limit}`),
 
-  get: (id: string): Promise<BookDto> =>
-    apiFetch(`/books/${id}`),
+  get: (id: string): Promise<BookDto> => apiFetch(`/books/${id}`),
 
   create: (data: CreateBookInput): Promise<BookDto> =>
     apiFetch('/books', { method: 'POST', body: JSON.stringify(data) }),
@@ -17,6 +22,5 @@ export const booksApi = {
   generate: (id: string): Promise<GenerateBookResponse> =>
     apiFetch(`/books/${id}/generate`, { method: 'POST' }),
 
-  remove: (id: string): Promise<void> =>
-    apiFetch(`/books/${id}`, { method: 'DELETE' }),
+  remove: (id: string): Promise<void> => apiFetch(`/books/${id}`, { method: 'DELETE' }),
 };

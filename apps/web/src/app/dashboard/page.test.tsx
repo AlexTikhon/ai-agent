@@ -10,7 +10,9 @@ import type { BookDto, BooksPageDto } from '@book/types';
 vi.mock('next/link', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   default: ({ href, children, className }: any) => (
-    <a href={href} className={className}>{children}</a>
+    <a href={href} className={className}>
+      {children}
+    </a>
   ),
 }));
 

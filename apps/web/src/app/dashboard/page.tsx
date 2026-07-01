@@ -43,7 +43,6 @@ export default function DashboardPage() {
   return (
     <main className="min-h-dvh bg-bg-base px-4 py-10">
       <div className="mx-auto max-w-container-lg">
-
         {/* ── Header ── */}
         <div className="mb-8 flex items-center justify-between gap-4">
           <div>
@@ -64,7 +63,14 @@ export default function DashboardPage() {
         {/* ── List states ── */}
         {books === null && !loadError && <BookListSkeleton />}
 
-        {loadError && <ErrorBanner message={loadError} onRetry={() => { void loadBooks(); }} />}
+        {loadError && (
+          <ErrorBanner
+            message={loadError}
+            onRetry={() => {
+              void loadBooks();
+            }}
+          />
+        )}
 
         {books !== null && books.length === 0 && <EmptyState />}
 
@@ -74,7 +80,9 @@ export default function DashboardPage() {
               <li key={book.id}>
                 <BookCard
                   book={book}
-                  onDelete={() => { void handleDelete(book.id); }}
+                  onDelete={() => {
+                    void handleDelete(book.id);
+                  }}
                   deleting={deletingId === book.id}
                 />
               </li>
@@ -108,9 +116,7 @@ function BookCard({ book, onDelete, deleting }: BookCardProps) {
         </Link>
         <span
           className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            isDraft
-              ? 'bg-stone-100 text-text-muted'
-              : 'bg-violet-50 text-violet-700'
+            isDraft ? 'bg-stone-100 text-text-muted' : 'bg-violet-50 text-violet-700'
           }`}
         >
           {book.status}

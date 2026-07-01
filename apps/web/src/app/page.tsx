@@ -51,7 +51,10 @@ export default function HomePage() {
         <div className="mt-16 rounded-xl border border-border-subtle bg-bg-subtle p-4 text-sm text-text-muted">
           <p className="font-semibold text-text-secondary">Phase 1A — Backend Ready</p>
           <p className="mt-1">
-            <a href="/dashboard" className="font-medium text-violet-600 underline underline-offset-2 hover:text-violet-500">
+            <a
+              href="/dashboard"
+              className="font-medium text-violet-600 underline underline-offset-2 hover:text-violet-500"
+            >
               Open Dashboard
             </a>
             {' · '}
