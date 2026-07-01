@@ -56,6 +56,7 @@ export interface PagePlan {
   narration: string;
   illustrationPrompt: string;
   learningGoal: string;
+  storyText?: string;
 }
 
 export interface StoryPlan {

@@ -62,13 +62,13 @@ describe('AgentService', () => {
 
   describe('startBookGeneration', () => {
     function setupMocks(bookOverrides: Partial<Book> = {}) {
-      const updatedBook = makeBook({ status: 'page_plan' as Book['status'], ...bookOverrides });
+      const updatedBook = makeBook({ status: 'story_draft' as Book['status'], ...bookOverrides });
       prisma.book.update.mockResolvedValue(updatedBook);
-      prisma.agentLog.createMany.mockResolvedValue({ count: 3 });
+      prisma.agentLog.createMany.mockResolvedValue({ count: 4 });
       return updatedBook;
     }
 
-    it('advances book status to page_plan', async () => {
+    it('advances book status to story_draft', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -77,7 +77,7 @@ describe('AgentService', () => {
       expect(prisma.book.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'b-1' },
-          data: expect.objectContaining({ status: 'page_plan' }),
+          data: expect.objectContaining({ status: 'story_draft' }),
         }),
       );
     });
@@ -185,6 +185,21 @@ describe('AgentService', () => {
       }
     });
 
+    it('stores storyText on every page and it is non-empty', async () => {
+      const book = makeBook({ childName: 'Mia', theme: 'friendship' });
+      setupMocks();
+
+      await service.startBookGeneration(book);
+
+      const updateArg = prisma.book.update.mock.calls[0]?.[0];
+      const plan = updateArg?.data?.storyPlan as Record<string, unknown>;
+      const pages = plan?.pages as Array<Record<string, unknown>>;
+      for (const page of pages) {
+        expect(typeof page.storyText).toBe('string');
+        expect((page.storyText as string).length).toBeGreaterThan(0);
+      }
+    });
+
     it('sets book title from the generated story plan', async () => {
       const book = makeBook({ childName: 'Mia', theme: 'friendship' });
       setupMocks();
@@ -196,7 +211,7 @@ describe('AgentService', () => {
       expect(updateArg?.data?.title).toContain('Mia');
     });
 
-    it('writes three AgentLog records all sharing the same traceId', async () => {
+    it('writes four AgentLog records all sharing the same traceId', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -205,13 +220,16 @@ describe('AgentService', () => {
       expect(prisma.agentLog.createMany).toHaveBeenCalledOnce();
       const createManyArg = prisma.agentLog.createMany.mock.calls[0]?.[0];
       const entries = createManyArg?.data as Array<Record<string, unknown>>;
-      expect(entries).toHaveLength(3);
+      expect(entries).toHaveLength(4);
       expect(entries[0]?.step).toBe('char_build');
       expect(entries[1]?.step).toBe('story_plan');
       expect(entries[2]?.step).toBe('page_plan');
-      expect(entries[0]?.traceId).toBe(entries[1]?.traceId);
-      expect(entries[1]?.traceId).toBe(entries[2]?.traceId);
-      expect(typeof entries[0]?.traceId).toBe('string');
+      expect(entries[3]?.step).toBe('story_draft');
+      const traceId = entries[0]?.traceId;
+      expect(typeof traceId).toBe('string');
+      for (const entry of entries) {
+        expect(entry.traceId).toBe(traceId);
+      }
     });
 
     it('uses book.childName and theme for deterministic output', async () => {

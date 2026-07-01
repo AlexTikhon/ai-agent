@@ -250,6 +250,7 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
   const storyPlan = book.storyPlan ?? null;
   const pages: PagePlan[] | undefined =
     storyPlan?.pages && storyPlan.pages.length > 0 ? storyPlan.pages : undefined;
+  const draftPages = pages?.filter((p) => p.storyText);
 
   return (
     <div>
@@ -339,6 +340,27 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
                 <p className="text-xs text-indigo-500">
                   <span className="font-medium">Learning goal:</span> {page.learningGoal}
                 </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {draftPages && draftPages.length > 0 && (
+        <div className="mb-6 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+          <h2 className="mb-3 font-display text-base font-semibold text-emerald-800">
+            Story draft is ready
+          </h2>
+          <ul className="space-y-3">
+            {draftPages.map((page) => (
+              <li key={page.pageNumber} className="rounded-lg border border-emerald-100 bg-white p-3 text-sm">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                    Page {page.pageNumber}
+                  </span>
+                  <span className="font-medium text-text-primary">{page.title}</span>
+                </div>
+                <p className="leading-relaxed text-text-secondary">{page.storyText}</p>
               </li>
             ))}
           </ul>

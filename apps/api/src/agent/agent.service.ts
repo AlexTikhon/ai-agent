@@ -96,6 +96,25 @@ function buildPagePlan(storyPlan: StoryPlan): PagePlan[] {
   return pages;
 }
 
+function buildStoryDraft(
+  characterCard: CharacterCard,
+  storyPlanWithPages: StoryPlan & { pages: PagePlan[] },
+): StoryPlan & { pages: Array<PagePlan & { storyText: string }> } {
+  const name = characterCard.name;
+  const { theme, openingHook } = storyPlanWithPages;
+
+  const pages = storyPlanWithPages.pages.map((page, pageIndex) => {
+    const lead =
+      pageIndex === 0
+        ? openingHook
+        : `${name} thought about ${theme} and took another brave step forward.`;
+    const storyText = `${lead} ${page.narration} ${name} knew deep down: ${page.learningGoal}`;
+    return { ...page, storyText };
+  });
+
+  return { ...storyPlanWithPages, pages };
+}
+
 @Injectable()
 export class AgentService {
   constructor(private readonly prisma: PrismaService) {}
@@ -109,12 +128,12 @@ export class AgentService {
     const characterCard = buildCharacterCard(childName, childAge);
     const storyPlan = buildStoryPlan(childName, theme);
     const pages = buildPagePlan(storyPlan);
-    const storyPlanWithPages = { ...storyPlan, pages };
+    const storyPlanWithPages = buildStoryDraft(characterCard, { ...storyPlan, pages });
 
     const updated = await this.prisma.book.update({
       where: { id: book.id },
       data: {
-        status: BookStatus.page_plan,
+        status: BookStatus.story_draft,
         title: storyPlan.title,
         characterCard: characterCard as unknown as Prisma.InputJsonValue,
         storyPlan: storyPlanWithPages as unknown as Prisma.InputJsonValue,
@@ -143,6 +162,14 @@ export class AgentService {
           bookId: book.id,
           agent: 'LocalPipelineAgent',
           step: AgentStep.page_plan,
+          status: AgentLogStatus.success,
+          attempt: 1,
+          traceId,
+        },
+        {
+          bookId: book.id,
+          agent: 'LocalPipelineAgent',
+          step: AgentStep.story_draft,
           status: AgentLogStatus.success,
           attempt: 1,
           traceId,

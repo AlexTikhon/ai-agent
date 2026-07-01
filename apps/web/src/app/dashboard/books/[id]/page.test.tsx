@@ -179,9 +179,9 @@ describe('BookDetailPage', () => {
     });
   });
 
-  it('updates book status badge to page_plan after successful generation', async () => {
+  it('updates book status badge to story_draft after successful generation', async () => {
     const user = userEvent.setup();
-    const generated = { ...MOCK_BOOK, status: BookStatus.PagePlan };
+    const generated = { ...MOCK_BOOK, status: BookStatus.StoryDraft };
     vi.mocked(fetch)
       .mockResolvedValueOnce(mockOk(MOCK_BOOK))
       .mockResolvedValueOnce(mockOk({ book: generated }));
@@ -191,7 +191,7 @@ describe('BookDetailPage', () => {
     await user.click(screen.getByRole('button', { name: /generate story/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('page_plan')).toBeDefined();
+      expect(screen.getByText('story_draft')).toBeDefined();
     });
   });
 
@@ -378,6 +378,146 @@ describe('BookDetailPage', () => {
       expect(screen.getByRole('heading', { name: /page plan is ready/i })).toBeDefined();
       expect(screen.getByText('The Big Step — Part 1')).toBeDefined();
       expect(screen.getByText('The Big Step — Part 2')).toBeDefined();
+    });
+  });
+
+  // ── Story draft section ───────────────────────────────────────────────────
+
+  it('renders the story draft section when pages include storyText in the generation response', async () => {
+    const user = userEvent.setup();
+    const pages: PagePlan[] = [
+      {
+        pageNumber: 1,
+        chapterIndex: 0,
+        title: 'A Magical Discovery — Part 1',
+        sceneDescription: 'Emma discovering a glowing light in the garden',
+        narration: 'It all began with a glowing light.',
+        illustrationPrompt: "Children's book illustration: Emma discovering a glowing light",
+        learningGoal: 'Through friendship, we learn kindness.',
+        storyText: 'One sunny morning, Emma discovered something magical. It all began with a glowing light. Emma knew deep down: Through friendship, we learn kindness.',
+      },
+    ];
+    const storyPlan = {
+      title: "Emma's Friendship Adventure",
+      theme: 'Friendship',
+      educationalMessage: 'Through friendship, we learn kindness.',
+      openingHook: 'One sunny morning…',
+      resolution: 'Emma returned home with joy.',
+      chapters: [
+        {
+          chapterNumber: 1,
+          title: 'A Magical Discovery',
+          summary: 'Emma finds something unexpected.',
+          setting: 'Garden',
+          emotionalArc: 'curiosity',
+          keyEvents: [],
+          illustrableScenes: [],
+        },
+      ],
+      pages,
+    };
+    const generated = { ...MOCK_BOOK, status: BookStatus.StoryDraft, storyPlan };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockOk(MOCK_BOOK))
+      .mockResolvedValueOnce(mockOk({ book: generated }));
+
+    render(<BookDetailPage />);
+    await waitFor(() => screen.getByRole('button', { name: /generate story/i }));
+    await user.click(screen.getByRole('button', { name: /generate story/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /story draft is ready/i })).toBeDefined();
+      expect(screen.getByText(/one sunny morning, emma discovered something magical/i)).toBeDefined();
+    });
+  });
+
+  it('renders the story draft section when book loads with storyText already on pages', async () => {
+    const pages: PagePlan[] = [
+      {
+        pageNumber: 1,
+        chapterIndex: 0,
+        title: 'The Big Step — Part 1',
+        sceneDescription: 'Emma taking her first brave step at school',
+        narration: 'It all began with courage.',
+        illustrationPrompt: "Children's book illustration: Emma at school",
+        learningGoal: 'Courage helps us grow.',
+        storyText: 'One sunny morning, Emma took her first brave step. It all began with courage. Emma knew deep down: Courage helps us grow.',
+      },
+      {
+        pageNumber: 2,
+        chapterIndex: 0,
+        title: 'The Big Step — Part 2',
+        sceneDescription: 'Emma smiling with new friends',
+        narration: 'The story continued as pride filled the air.',
+        illustrationPrompt: "Children's book illustration: Emma with friends",
+        learningGoal: 'Courage helps us grow.',
+        storyText: 'Emma thought about courage and took another brave step. The story continued as pride filled the air. Emma knew deep down: Courage helps us grow.',
+      },
+    ];
+    const storyPlan = {
+      title: "Emma's Courage Adventure",
+      theme: 'Courage',
+      educationalMessage: 'Courage helps us grow.',
+      openingHook: 'One day…',
+      resolution: 'Emma was proud.',
+      chapters: [
+        {
+          chapterNumber: 1,
+          title: 'The Big Step',
+          summary: 'Emma takes her first brave step.',
+          setting: 'School',
+          emotionalArc: 'nervousness to pride',
+          keyEvents: [],
+          illustrableScenes: [],
+        },
+      ],
+      pages,
+    };
+    const bookWithDraft = { ...MOCK_BOOK, status: BookStatus.StoryDraft, storyPlan };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithDraft));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /story draft is ready/i })).toBeDefined();
+      expect(screen.getByText(/one sunny morning, emma took her first brave step/i)).toBeDefined();
+      expect(screen.getByText(/emma thought about courage/i)).toBeDefined();
+    });
+  });
+
+  it('renders story_draft status badge correctly', async () => {
+    const storyDraftBook = { ...MOCK_BOOK, status: BookStatus.StoryDraft };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(storyDraftBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('story_draft')).toBeDefined();
+    });
+  });
+
+  it('hides Edit and Delete buttons when status is story_draft', async () => {
+    const storyDraftBook = { ...MOCK_BOOK, status: BookStatus.StoryDraft };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(storyDraftBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('story_draft')).toBeDefined();
+    });
+
+    expect(screen.queryByRole('button', { name: /^edit$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
+  });
+
+  it('shows "Generation has started" note when status is story_draft', async () => {
+    const storyDraftBook = { ...MOCK_BOOK, status: BookStatus.StoryDraft };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(storyDraftBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/generation has started/i)).toBeDefined();
     });
   });
 
