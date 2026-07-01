@@ -200,7 +200,7 @@ export interface PageLayout {
   backgroundGradient?: string;
 }
 
-// ─── Generated image result ───────────────────────────────────────────────────
+// ─── Generated image result (future real pipeline) ────────────────────────────
 
 export interface GeneratedImage {
   r2Key: string;
@@ -209,6 +209,30 @@ export interface GeneratedImage {
   model: string;
   timingMs: number;
   pageNumber: number;
+}
+
+// ─── Phase 2G: Mock/local image generation ────────────────────────────────────
+
+export interface GeneratedImageEntry {
+  id: string;
+  kind: 'cover' | 'page' | 'back_cover';
+  pageNumber?: number;
+  prompt: string;
+  negativePrompt?: string;
+  provider: 'local_mock';
+  status: 'complete';
+  imageUrl: string;
+  altText: string;
+  width: number;
+  height: number;
+  seed: string;
+}
+
+export interface ImageGenerationResult {
+  provider: 'local_mock';
+  status: 'complete';
+  images: GeneratedImageEntry[];
+  createdAt: string;
 }
 
 // ─── Book request (wizard output / API input) ─────────────────────────────────
@@ -268,6 +292,7 @@ export interface BookDto {
   characterCard?: CharacterCard | null;
   storyPlan?: StoryPlan | null;
   bookPreview?: BookPreview | null;
+  imageGenerationResult?: ImageGenerationResult | null;
   createdAt: string;
   updatedAt: string;
 }

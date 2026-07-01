@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useRouter, useParams } from 'next/navigation';
 import BookDetailPage from './page';
 import { SupportedLanguage, BookStatus } from '@book/types';
-import type { BookDto, BookPreview, IllustrationPlan, PagePlan } from '@book/types';
+import type { BookDto, BookPreview, GeneratedImageEntry, IllustrationPlan, ImageGenerationResult, PagePlan } from '@book/types';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -34,6 +34,65 @@ const MOCK_BOOK: BookDto = {
   createdAt: '2024-01-01T00:00:00.000Z',
   updatedAt: '2024-01-01T00:00:00.000Z',
 };
+
+function makeImageGenerationResult(bookId = 'book-1'): ImageGenerationResult {
+  const coverEntry: GeneratedImageEntry = {
+    id: `${bookId}-cover`,
+    kind: 'cover',
+    prompt: "A child named Emma on the cover of a children's book, watercolor style",
+    provider: 'local_mock',
+    status: 'complete',
+    imageUrl: `/mock-images/${bookId}/cover.svg`,
+    altText: "Cover illustration for Emma's Friendship Adventure",
+    width: 768,
+    height: 1024,
+    seed: `${bookId}:cover:0`,
+  };
+  const page1Entry: GeneratedImageEntry = {
+    id: `${bookId}-page-1`,
+    kind: 'page',
+    pageNumber: 1,
+    prompt: 'A child with wavy brown hair, Emma discovering a glowing light.',
+    provider: 'local_mock',
+    status: 'complete',
+    imageUrl: `/mock-images/${bookId}/page-1.svg`,
+    altText: 'Page 1 illustration',
+    width: 1024,
+    height: 768,
+    seed: `${bookId}:page:1`,
+  };
+  const page2Entry: GeneratedImageEntry = {
+    id: `${bookId}-page-2`,
+    kind: 'page',
+    pageNumber: 2,
+    prompt: 'A child with wavy brown hair, Emma and friend walking through mushrooms.',
+    provider: 'local_mock',
+    status: 'complete',
+    imageUrl: `/mock-images/${bookId}/page-2.svg`,
+    altText: 'Page 2 illustration',
+    width: 1024,
+    height: 768,
+    seed: `${bookId}:page:2`,
+  };
+  const backCoverEntry: GeneratedImageEntry = {
+    id: `${bookId}-back-cover`,
+    kind: 'back_cover',
+    prompt: "Back cover for Emma's Friendship Adventure, child-friendly decorative design",
+    provider: 'local_mock',
+    status: 'complete',
+    imageUrl: `/mock-images/${bookId}/back-cover.svg`,
+    altText: 'Back cover illustration',
+    width: 768,
+    height: 1024,
+    seed: `${bookId}:back_cover:0`,
+  };
+  return {
+    provider: 'local_mock',
+    status: 'complete',
+    images: [coverEntry, page1Entry, page2Entry, backCoverEntry],
+    createdAt: '1970-01-01T00:00:00.000Z',
+  };
+}
 
 function makeBookPreview(childName = 'Emma'): BookPreview {
   return {
@@ -894,6 +953,141 @@ describe('BookDetailPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/generation has started/i)).toBeDefined();
+    });
+  });
+
+  // ── Image generation section ──────────────────────────────────────────────
+
+  it('renders "Images are ready" section when imageGenerationResult is present', async () => {
+    const imageGenerationResult = makeImageGenerationResult();
+    const bookWithImages = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+      bookPreview: makeBookPreview(),
+      imageGenerationResult,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithImages));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /images are ready/i })).toBeDefined();
+    });
+  });
+
+  it('renders provider label in the image generation section', async () => {
+    const imageGenerationResult = makeImageGenerationResult();
+    const bookWithImages = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+      bookPreview: makeBookPreview(),
+      imageGenerationResult,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithImages));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('local_mock')).toBeDefined();
+    });
+  });
+
+  it('renders total image count in the image generation section', async () => {
+    const imageGenerationResult = makeImageGenerationResult();
+    const bookWithImages = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+      bookPreview: makeBookPreview(),
+      imageGenerationResult,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithImages));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('4')).toBeDefined();
+    });
+  });
+
+  it('renders Cover entry in the image generation section', async () => {
+    const imageGenerationResult = makeImageGenerationResult();
+    const bookWithImages = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+      bookPreview: makeBookPreview(),
+      imageGenerationResult,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithImages));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cover')).toBeDefined();
+    });
+  });
+
+  it('renders page image entries in the image generation section', async () => {
+    const imageGenerationResult = makeImageGenerationResult();
+    const bookWithImages = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+      bookPreview: makeBookPreview(),
+      imageGenerationResult,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithImages));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      // multiple "Page N" labels appear (book preview + image section) — at least 2 occurrences each
+      expect(screen.getAllByText('Page 1').length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText('Page 2').length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('renders mock image URLs in the image generation section', async () => {
+    const imageGenerationResult = makeImageGenerationResult();
+    const bookWithImages = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+      bookPreview: makeBookPreview(),
+      imageGenerationResult,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithImages));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('/mock-images/book-1/cover.svg')).toBeDefined();
+    });
+  });
+
+  it('renders Back Cover entry in the image generation section', async () => {
+    const imageGenerationResult = makeImageGenerationResult();
+    const bookWithImages = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+      bookPreview: makeBookPreview(),
+      imageGenerationResult,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithImages));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Back Cover')).toBeDefined();
+    });
+  });
+
+  it('renders without crashing when imageGenerationResult is absent (old books)', async () => {
+    const oldBook = { ...MOCK_BOOK, status: BookStatus.PreviewReady, bookPreview: makeBookPreview() };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(oldBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /book preview is ready/i })).toBeDefined();
+      expect(screen.queryByRole('heading', { name: /images are ready/i })).toBeNull();
     });
   });
 });

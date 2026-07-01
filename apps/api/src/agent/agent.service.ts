@@ -6,7 +6,9 @@ import {
   Pronouns,
   type BookPreview,
   type CharacterCard,
+  type GeneratedImageEntry,
   type IllustrationPlan,
+  type ImageGenerationResult,
   type PagePlan,
   type StoryPlan,
 } from '@book/types';
@@ -195,6 +197,62 @@ function buildBookPreview(
   };
 }
 
+function buildImageGenerationResult(
+  bookId: string,
+  bookPreview: BookPreview,
+): ImageGenerationResult {
+  const images: GeneratedImageEntry[] = [];
+
+  images.push({
+    id: `${bookId}-cover`,
+    kind: 'cover',
+    prompt: bookPreview.cover.illustrationPrompt,
+    provider: 'local_mock',
+    status: 'complete',
+    imageUrl: `/mock-images/${bookId}/cover.svg`,
+    altText: `Cover illustration for ${bookPreview.title}`,
+    width: 768,
+    height: 1024,
+    seed: `${bookId}:cover:0`,
+  });
+
+  for (const page of bookPreview.pages) {
+    images.push({
+      id: `${bookId}-page-${page.pageNumber}`,
+      kind: 'page',
+      pageNumber: page.pageNumber,
+      prompt: page.illustrationPrompt,
+      provider: 'local_mock',
+      status: 'complete',
+      imageUrl: `/mock-images/${bookId}/page-${page.pageNumber}.svg`,
+      altText: `Page ${page.pageNumber} illustration`,
+      width: 1024,
+      height: 768,
+      seed: `${bookId}:page:${page.pageNumber}`,
+    });
+  }
+
+  images.push({
+    id: `${bookId}-back-cover`,
+    kind: 'back_cover',
+    prompt: `Back cover for "${bookPreview.title}", child-friendly decorative design`,
+    provider: 'local_mock',
+    status: 'complete',
+    imageUrl: `/mock-images/${bookId}/back-cover.svg`,
+    altText: 'Back cover illustration',
+    width: 768,
+    height: 1024,
+    seed: `${bookId}:back_cover:0`,
+  });
+
+  return {
+    provider: 'local_mock',
+    status: 'complete',
+    images,
+    createdAt: '1970-01-01T00:00:00.000Z',
+  };
+}
+
 @Injectable()
 export class AgentService {
   constructor(private readonly prisma: PrismaService) {}
@@ -211,15 +269,17 @@ export class AgentService {
     const storyPlanWithDraft = buildStoryDraft(characterCard, { ...storyPlan, pages });
     const storyPlanFinal = buildIllustrationPlan(characterCard, storyPlanWithDraft);
     const bookPreview = buildBookPreview(book, characterCard, storyPlanFinal);
+    const imageGenerationResult = buildImageGenerationResult(book.id, bookPreview);
 
     const updated = await this.prisma.book.update({
       where: { id: book.id },
       data: {
-        status: BookStatus.preview_ready,
+        status: BookStatus.image_gen,
         title: storyPlan.title,
         characterCard: characterCard as unknown as Prisma.InputJsonValue,
         storyPlan: storyPlanFinal as unknown as Prisma.InputJsonValue,
         bookPreview: bookPreview as unknown as Prisma.InputJsonValue,
+        imageGenerationResult: imageGenerationResult as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -269,6 +329,14 @@ export class AgentService {
           bookId: book.id,
           agent: 'LocalPipelineAgent',
           step: AgentStep.preview_ready,
+          status: AgentLogStatus.success,
+          attempt: 1,
+          traceId,
+        },
+        {
+          bookId: book.id,
+          agent: 'LocalPipelineAgent',
+          step: AgentStep.image_gen,
           status: AgentLogStatus.success,
           attempt: 1,
           traceId,

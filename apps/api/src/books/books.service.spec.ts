@@ -34,6 +34,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
     characterCard: null,
     storyPlan: null,
     bookPreview: null,
+    imageGenerationResult: null,
     chapters: null,
     imagePrompts: null,
     qualityReport: null,
