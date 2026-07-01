@@ -201,6 +201,8 @@ export interface BookDto {
   language: SupportedLanguage | null;
   theme: string | null;
   status: BookStatus;
+  characterCard?: CharacterCard | null;
+  storyPlan?: StoryPlan | null;
   createdAt: string;
   updatedAt: string;
 }

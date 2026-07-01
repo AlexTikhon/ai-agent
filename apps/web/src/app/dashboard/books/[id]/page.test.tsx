@@ -179,9 +179,9 @@ describe('BookDetailPage', () => {
     });
   });
 
-  it('updates book status after successful generation', async () => {
+  it('updates book status badge after successful generation', async () => {
     const user = userEvent.setup();
-    const generated = { ...MOCK_BOOK, status: BookStatus.CharBuild };
+    const generated = { ...MOCK_BOOK, status: BookStatus.StoryPlan };
     vi.mocked(fetch)
       .mockResolvedValueOnce(mockOk(MOCK_BOOK))
       .mockResolvedValueOnce(mockOk({ book: generated }));
@@ -191,7 +191,7 @@ describe('BookDetailPage', () => {
     await user.click(screen.getByRole('button', { name: /generate story/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('char_build')).toBeDefined();
+      expect(screen.getByText('story_plan')).toBeDefined();
     });
   });
 
@@ -207,6 +207,113 @@ describe('BookDetailPage', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Missing required draft fields');
+    });
+  });
+
+  // ── Story plan section ────────────────────────────────────────────────────
+
+  it('renders the story plan section when storyPlan is present in the response', async () => {
+    const user = userEvent.setup();
+    const storyPlan = {
+      title: "Emma's Friendship Adventure",
+      theme: 'Friendship',
+      educationalMessage: 'Through friendship, we learn kindness.',
+      openingHook: 'One sunny morning…',
+      resolution: 'Emma returned home with joy.',
+      chapters: [
+        {
+          chapterNumber: 1,
+          title: 'A Magical Discovery',
+          summary: 'Emma finds something unexpected.',
+          setting: 'Garden',
+          emotionalArc: 'curiosity',
+          keyEvents: [],
+          illustrableScenes: [],
+        },
+      ],
+    };
+    const generated = { ...MOCK_BOOK, status: BookStatus.StoryPlan, storyPlan };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockOk(MOCK_BOOK))
+      .mockResolvedValueOnce(mockOk({ book: generated }));
+
+    render(<BookDetailPage />);
+    await waitFor(() => screen.getByRole('button', { name: /generate story/i }));
+    await user.click(screen.getByRole('button', { name: /generate story/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /story plan is ready/i })).toBeDefined();
+      expect(screen.getByText("Emma's Friendship Adventure")).toBeDefined();
+      expect(screen.getByText('Through friendship, we learn kindness.')).toBeDefined();
+      expect(screen.getByText('A Magical Discovery')).toBeDefined();
+    });
+  });
+
+  it('renders a story plan section when book loads with storyPlan already set', async () => {
+    const storyPlan = {
+      title: "Emma's Courage Adventure",
+      theme: 'Courage',
+      educationalMessage: 'Courage helps us grow.',
+      openingHook: 'One day…',
+      resolution: 'Emma was proud.',
+      chapters: [
+        {
+          chapterNumber: 1,
+          title: 'The Big Step',
+          summary: 'Emma takes her first brave step.',
+          setting: 'School',
+          emotionalArc: 'nervousness to pride',
+          keyEvents: [],
+          illustrableScenes: [],
+        },
+      ],
+    };
+    const bookWithPlan = { ...MOCK_BOOK, status: BookStatus.StoryPlan, storyPlan };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(bookWithPlan));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /story plan is ready/i })).toBeDefined();
+      expect(screen.getByText('The Big Step')).toBeDefined();
+    });
+  });
+
+  // ── Edit/Delete gating ────────────────────────────────────────────────────
+
+  it('hides Edit and Delete buttons when status is not created', async () => {
+    const inProgress = { ...MOCK_BOOK, status: BookStatus.StoryPlan };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(inProgress));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('story_plan')).toBeDefined();
+    });
+
+    expect(screen.queryByRole('button', { name: /^edit$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
+  });
+
+  it('shows a "Generation has started" note when status is not created', async () => {
+    const inProgress = { ...MOCK_BOOK, status: BookStatus.StoryPlan };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(inProgress));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/generation has started/i)).toBeDefined();
+    });
+  });
+
+  it('shows Edit and Delete buttons for books with created status', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(MOCK_BOOK));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^edit$/i })).toBeDefined();
+      expect(screen.getByRole('button', { name: /^delete$/i })).toBeDefined();
     });
   });
 });

@@ -247,6 +247,7 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
   const isDraft = book.status === BookStatus.Created;
   const missingFields = getMissingDraftFields(book);
   const canGenerate = isDraft && missingFields.length === 0;
+  const storyPlan = book.storyPlan ?? null;
 
   return (
     <div>
@@ -295,6 +296,30 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
         </div>
       </dl>
 
+      {storyPlan && (
+        <div className="mb-6 rounded-xl border border-violet-100 bg-violet-50 p-4">
+          <h2 className="mb-1 font-display text-base font-semibold text-violet-800">
+            Story plan is ready
+          </h2>
+          <p className="mb-1 text-sm font-medium text-violet-700">{storyPlan.title}</p>
+          <p className="mb-3 text-xs text-violet-600">{storyPlan.educationalMessage}</p>
+          <ul className="space-y-1.5">
+            {storyPlan.chapters.map((ch) => (
+              <li key={ch.chapterNumber} className="text-sm">
+                <span className="font-medium text-text-primary">{ch.title}</span>
+                <span className="text-text-muted"> — {ch.summary}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!isDraft && (
+        <p className="mb-4 rounded-lg bg-violet-50 px-4 py-3 text-sm text-violet-700">
+          Generation has started. This draft can no longer be edited.
+        </p>
+      )}
+
       {isDraft && missingFields.length > 0 && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Complete all fields to generate: {missingFields.join(', ')}.
@@ -307,33 +332,35 @@ function BookDetailView({ book, onEdit, onDelete, deleting, onGenerate, generati
         </p>
       )}
 
-      <div className="mb-3 flex gap-3">
-        {isDraft && (
-          <button
-            onClick={onGenerate}
-            disabled={!canGenerate || generating}
-            className="flex-1 rounded-xl bg-violet-600 py-2 text-sm font-semibold text-white shadow-brand transition-all hover:bg-violet-500 disabled:opacity-60"
-          >
-            {generating ? 'Generating…' : 'Generate Story'}
-          </button>
-        )}
-      </div>
+      {isDraft && (
+        <>
+          <div className="mb-3 flex gap-3">
+            <button
+              onClick={onGenerate}
+              disabled={!canGenerate || generating}
+              className="flex-1 rounded-xl bg-violet-600 py-2 text-sm font-semibold text-white shadow-brand transition-all hover:bg-violet-500 disabled:opacity-60"
+            >
+              {generating ? 'Generating…' : 'Generate Story'}
+            </button>
+          </div>
 
-      <div className="flex gap-3">
-        <button
-          onClick={onEdit}
-          className="flex-1 rounded-xl border border-border-default py-2 text-sm font-semibold text-text-secondary transition-all hover:bg-stone-100"
-        >
-          Edit
-        </button>
-        <button
-          onClick={onDelete}
-          disabled={deleting}
-          className="flex-1 rounded-xl border border-danger-base/20 bg-danger-light py-2 text-sm font-semibold text-danger-base transition-all hover:bg-red-100 disabled:opacity-60"
-        >
-          {deleting ? '…' : 'Delete'}
-        </button>
-      </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onEdit}
+              className="flex-1 rounded-xl border border-border-default py-2 text-sm font-semibold text-text-secondary transition-all hover:bg-stone-100"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onDelete}
+              disabled={deleting}
+              className="flex-1 rounded-xl border border-danger-base/20 bg-danger-light py-2 text-sm font-semibold text-danger-base transition-all hover:bg-red-100 disabled:opacity-60"
+            >
+              {deleting ? '…' : 'Delete'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
