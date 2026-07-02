@@ -1,0 +1,96 @@
+import { describe, it, expect } from 'vitest';
+import { MockStoryGenerationProvider, type StoryGenerationInput } from './story-generation-provider';
+
+function makeInput(overrides: Partial<StoryGenerationInput> = {}): StoryGenerationInput {
+  return {
+    bookId: 'b-1',
+    childName: 'Mia',
+    childAge: 5,
+    theme: 'friendship',
+    language: 'en',
+    ...overrides,
+  };
+}
+
+describe('MockStoryGenerationProvider', () => {
+  describe('generateStory', () => {
+    it('returns the same output for the same input (deterministic)', async () => {
+      const provider = new MockStoryGenerationProvider();
+      const input = makeInput();
+
+      const first = await provider.generateStory(input);
+      const second = await provider.generateStory(input);
+
+      expect(second).toEqual(first);
+    });
+
+    it('produces different output for a different bookId, childName, or theme', async () => {
+      const provider = new MockStoryGenerationProvider();
+
+      const base = await provider.generateStory(makeInput());
+      const differentChild = await provider.generateStory(makeInput({ childName: 'Leo' }));
+      const differentTheme = await provider.generateStory(makeInput({ theme: 'courage' }));
+
+      expect(differentChild.characterCard.name).toBe('Leo');
+      expect(differentChild.characterCard.name).not.toBe(base.characterCard.name);
+      expect(differentTheme.storyPlan.theme).toBe('courage');
+      expect(differentTheme.storyPlan.theme).not.toBe(base.storyPlan.theme);
+    });
+
+    it('includes a characterCard derived from childName and childAge', async () => {
+      const provider = new MockStoryGenerationProvider();
+
+      const result = await provider.generateStory(makeInput({ childName: 'Mia', childAge: 5 }));
+
+      expect(result.characterCard.name).toBe('Mia');
+      expect(result.characterCard.age).toBe(5);
+      expect(typeof result.characterCard.visualAnchor).toBe('string');
+    });
+
+    it('includes a storyPlan with 3 chapters and 2 pages per chapter', async () => {
+      const provider = new MockStoryGenerationProvider();
+
+      const result = await provider.generateStory(makeInput());
+
+      expect(result.storyPlan.chapters).toHaveLength(3);
+      expect(result.storyPlan.pages).toHaveLength(6);
+    });
+
+    it('every storyPlan page has storyText and an illustration plan', async () => {
+      const provider = new MockStoryGenerationProvider();
+
+      const result = await provider.generateStory(makeInput());
+
+      for (const page of result.storyPlan.pages) {
+        expect(typeof page.storyText).toBe('string');
+        expect(page.storyText.length).toBeGreaterThan(0);
+        expect(page.illustration).toBeDefined();
+        expect(typeof page.illustration.prompt).toBe('string');
+      }
+    });
+
+    it('includes a bookPreview with a cover, pages, and back cover', async () => {
+      const provider = new MockStoryGenerationProvider();
+
+      const result = await provider.generateStory(makeInput({ childName: 'Mia' }));
+
+      expect(result.bookPreview.cover.childName).toBe('Mia');
+      expect(result.bookPreview.pages).toHaveLength(result.storyPlan.pages.length);
+      expect(result.bookPreview.backCover.message.length).toBeGreaterThan(0);
+    });
+
+    it('includes an imageGenerationResult with one entry per page plus cover and back cover', async () => {
+      const provider = new MockStoryGenerationProvider();
+
+      const result = await provider.generateStory(makeInput({ bookId: 'book-42' }));
+
+      expect(result.imageGenerationResult.provider).toBe('local_mock');
+      expect(result.imageGenerationResult.images).toHaveLength(
+        result.bookPreview.pages.length + 2,
+      );
+      for (const image of result.imageGenerationResult.images) {
+        expect(image.id.startsWith('book-42')).toBe(true);
+      }
+    });
+  });
+});

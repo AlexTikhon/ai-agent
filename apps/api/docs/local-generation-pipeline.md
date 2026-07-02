@@ -33,19 +33,17 @@ request handler and the HTTP response only returns once the whole pipeline
 
 ## What `AgentService.startBookGeneration` does, in order
 
-All of steps (a)–(d) are pure, deterministic local functions — no I/O, no
-randomness beyond hashing the book's own fields:
-
-- (a) `buildCharacterCard`, `buildStoryPlan`, `buildPagePlan`,
-  `buildStoryDraft`, `buildIllustrationPlan`, `buildBookPreview` — build a
-  mock story (3 chapters × 2 pages = 6 pages) purely from `childName`,
-  `childAge`, `theme` already on the book row.
-- (b) `buildImageGenerationResult` — builds one `GeneratedImageEntry` per
-  cover / page / back-cover slot (8 entries total for the default 6-page
-  story). `imageUrl` on each entry is a `/mock-images/<bookId>/...svg`
-  placeholder path — nothing is ever written there and nothing serves it;
-  it exists for display/metadata only.
-- (c) `saveMockImageAssets` (private helper) — for every entry, generates
+- (a) `storyGenerationProvider.generateStory({ bookId, childName, childAge,
+  theme, language })` — delegates all character/story/page/image-metadata
+  planning to the injected `StoryGenerationProvider` (see "Story generation
+  provider boundary" below) and returns `{ characterCard, storyPlan,
+  bookPreview, imageGenerationResult }`. If this call throws, `AgentService`
+  catches it, marks the book `failed` (`failedStep: 'story_plan'`,
+  `errorMessage` from the caught error), writes a single `story_plan`
+  `AgentLog` row with `status: 'error'`, and returns immediately — none of
+  the steps below run.
+- (b) `saveMockImageAssets` (private helper) — for every
+  `GeneratedImageEntry` in the provider's `imageGenerationResult`, generates
   deterministic PNG bytes via `generateMockImagePng(entry.seed)`
   (`apps/api/src/images/mock-image-producer.ts`) and saves them through
   `ImageAssetStorage.saveImageAsset(imageAssetKey(bookId, kind, pageNumber),
@@ -53,8 +51,11 @@ randomness beyond hashing the book's own fields:
   caught, logged (`Failed to save mock image asset for entry "<id>": ...`),
   and skipped — it does **not** fail generation. A skipped image just
   degrades to a placeholder rectangle at render time (see below).
-- (d) `buildBookLayout` — builds the print-ready `BookLayout` (2400×2400px
-  canvas, `square_8x8` trim), referencing the same mock `imageUrl`s.
+- (c) `buildBookLayout` (private function in `agent.service.ts`) — builds the
+  print-ready `BookLayout` (2400×2400px canvas, `square_8x8` trim),
+  referencing the same mock `imageUrl`s. This step stays in `AgentService`
+  rather than the story provider — it's print-layout logic over already-built
+  story/image data, not story content itself.
 
 Then, in three phases against the database:
 
@@ -85,6 +86,72 @@ Then, in three phases against the database:
   `story_draft`, `illust_plan`, `preview_ready`, `image_gen`, `layout`,
   `pdf_render` — the last one's `status` is `success` or `error` depending on
   Phase 2's outcome, with the error message attached when it failed.
+
+## Story generation provider boundary
+
+`apps/api/src/agent/story-generation-provider.ts` defines `StoryGenerationProvider`,
+the internal boundary `AgentService` depends on for all character/story/page/
+image-metadata planning, mirroring the `PdfStorage` / `ImageAssetStorage`
+pattern:
+
+```ts
+interface StoryGenerationInput {
+  bookId: string;
+  childName: string;
+  childAge: number;
+  theme: string;
+  language: string;
+}
+
+interface StoryGenerationResult {
+  characterCard: CharacterCard;
+  storyPlan: StoryPlan & { pages: Array<PagePlan & { storyText: string; illustration: IllustrationPlan }> };
+  bookPreview: BookPreview;
+  imageGenerationResult: ImageGenerationResult;
+}
+
+interface StoryGenerationProvider {
+  generateStory(input: StoryGenerationInput): Promise<StoryGenerationResult>;
+}
+```
+
+- Registered via `STORY_GENERATION_PROVIDER_TOKEN` in `books.module.ts`,
+  injected into `AgentService`'s constructor exactly like `PDF_STORAGE_TOKEN`
+  and `IMAGE_ASSET_STORAGE_TOKEN`.
+- `MockStoryGenerationProvider` is the only implementation today. It's a
+  straight extraction of the hand-written template logic that used to live
+  directly in `AgentService` (`buildCharacterCard`, `buildStoryPlan`,
+  `buildPagePlan`, `buildStoryDraft`, `buildIllustrationPlan`,
+  `buildBookPreview`, `buildImageGenerationResult` — now private functions in
+  `story-generation-provider.ts`) — same inputs still produce byte-identical
+  output; no behavior changed by the extraction.
+- Image *metadata* (prompts, mock `imageUrl` placeholder paths,
+  `GeneratedImageEntry` records) is built by the provider as part of
+  `imageGenerationResult`. Actual image *bytes* are not — that stays behind
+  `ImageAssetStorage` / `generateMockImagePng` (see "Images" in
+  `apps/api/docs/pdf-rendering.md`), called separately by `AgentService`
+  after the provider returns. This split is deliberate: a future real-LLM
+  story provider and a future real-image provider are independent phases and
+  shouldn't be coupled.
+- `buildBookLayout` (print-layout geometry over already-built story/image
+  data) intentionally stayed a private function in `agent.service.ts` rather
+  than moving into the provider — it isn't story content, and moving it would
+  have widened this phase's scope beyond the story-generation boundary.
+- **Failure behavior**: if `generateStory` throws, `AgentService` catches it
+  before Phase 1 runs, marks the book `failed` (`failedStep: 'story_plan'`,
+  `errorMessage` from the caught error's message), writes one `story_plan`
+  `AgentLog` row with `status: 'error'`, and returns — no image assets are
+  saved, no layout is built, no PDF is rendered or stored.
+
+### How a future real-LLM provider should slot in
+
+Implement `StoryGenerationProvider` with a class that calls a real LLM (e.g.
+`RealStoryGenerationProvider`), returning the exact same
+`StoryGenerationResult` shape `MockStoryGenerationProvider` returns today, and
+swap the `useFactory` for `STORY_GENERATION_PROVIDER_TOKEN` in
+`books.module.ts`. `AgentService` and everything downstream (image asset
+saving, layout, PDF render, storage) need no changes — they only depend on
+the interface, not on how the result was produced.
 
 ## Status transitions
 
@@ -133,6 +200,7 @@ re-verified here — see "Test coverage" below.
 | `NotFoundException` (404) | book missing / not owned / soft-deleted | any `:id` route |
 | `NotFoundException` (404) | `previewPdfUrl` set but file missing from storage | `GET /:id/pdf/preview` |
 | `BookStatus.failed` | PDF render or `pdfStorage.savePreviewPdf` throws | `POST /:id/generate` response body |
+| `BookStatus.failed` | `storyGenerationProvider.generateStory` throws (`failedStep: 'story_plan'`) | `POST /:id/generate` response body |
 | per-image save failure (non-fatal) | one `ImageAssetStorage.saveImageAsset` call throws | logged only; that image renders as a placeholder |
 
 ## Test coverage
@@ -145,7 +213,16 @@ re-verified here — see "Test coverage" below.
   endpoint's header-setting behavior.
 - `apps/api/src/agent/agent.service.spec.ts` — every stage of
   `startBookGeneration` with `renderStorybookPdf` mocked (story/layout/image
-  metadata, AgentLog rows, success/failure status transitions).
+  metadata, AgentLog rows, success/failure status transitions), plus
+  dedicated coverage for the `StoryGenerationProvider` boundary: a failing
+  provider marks the book `failed` without saving images/building
+  layout/rendering a PDF, and `AgentService` calls `generateStory` with the
+  expected input.
+- `apps/api/src/agent/story-generation-provider.spec.ts` —
+  `MockStoryGenerationProvider` in isolation: deterministic output for the
+  same input, varies with `childName`/`theme`/`bookId`, and every required
+  field is present on the returned `characterCard`, `storyPlan`,
+  `bookPreview`, and `imageGenerationResult`.
 - `apps/api/src/agent/agent.service.local-pipeline.spec.ts` — the one test
   in this file runs the **real** `generateMockImagePng` →
   `LocalImageAssetStorage` → `buildImageBufferResolver` →
@@ -166,8 +243,9 @@ alternatives instead).
 
 ## What's intentionally not real yet
 
-- **AI story generation** — `buildStoryPlan` / `buildPagePlan` /
-  `buildStoryDraft` are hand-written templates, not an LLM call.
+- **AI story generation** — `MockStoryGenerationProvider` (behind the
+  `StoryGenerationProvider` boundary, see above) is hand-written templates,
+  not an LLM call.
 - **AI image generation** — `generateMockImagePng` produces a solid-color
   8×8 PNG swatch keyed by a deterministic hash of the entry's seed, not
   artwork from an image model.
@@ -209,20 +287,19 @@ external AI or network calls happen at any point in this flow.
 
 ## How a future real-provider phase should slot in
 
-Both mock boundaries were built so a real provider drops in without
+All three mock boundaries were built so a real provider drops in without
 touching callers:
 
+- **Real story generation**: implement `StoryGenerationProvider`
+  (`apps/api/src/agent/story-generation-provider.ts`) with real LLM calls
+  and swap the `useFactory` for `STORY_GENERATION_PROVIDER_TOKEN` in
+  `books.module.ts` — see "Story generation provider boundary" above.
+  `AgentService` and everything downstream do not need to change.
 - **Real image generation**: replace the call to `generateMockImagePng` in
   `AgentService.saveMockImageAssets` with a real provider call, still saved
   through `ImageAssetStorage.saveImageAsset`. No changes needed to
   `buildImageBufferResolver` or `renderStorybookPdf` — see
   `apps/api/docs/pdf-rendering.md` for the detailed boundary contract.
-- **Real story generation**: replace `buildStoryPlan` / `buildPagePlan` /
-  `buildStoryDraft` / `buildIllustrationPlan` with real LLM calls that
-  return the same `StoryPlan` / `PagePlan` / `IllustrationPlan` shapes
-  (`@book/types`) already consumed by `buildBookPreview` and
-  `buildBookLayout` — those two and everything downstream (layout, PDF
-  render, storage) do not need to change.
 - **Cloud storage**: `PdfStorage` already has a `CloudPdfStorage` (S3/R2)
   implementation behind `PDF_STORAGE_DRIVER`; `ImageAssetStorage` would need
   an equivalent cloud implementation following the same pattern before image
