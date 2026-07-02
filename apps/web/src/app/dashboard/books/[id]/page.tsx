@@ -30,6 +30,50 @@ const LANGUAGES: { value: SupportedLanguage; label: string }[] = [
 const inputCls =
   'rounded-lg border border-border-default bg-white px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-violet-600 focus:outline-none focus:ring-1 focus:ring-violet-600';
 
+const POLL_INTERVAL_MS = 2500;
+
+function isTerminalBookStatus(status: BookStatus): boolean {
+  return (
+    status === BookStatus.Complete ||
+    status === BookStatus.Failed ||
+    status === BookStatus.Cancelled ||
+    status === BookStatus.Partial
+  );
+}
+
+function isGeneratingBookStatus(status: BookStatus): boolean {
+  return status !== BookStatus.Created && !isTerminalBookStatus(status);
+}
+
+function generationStatusMessage(status: BookStatus): string {
+  switch (status) {
+    case BookStatus.CharBuild:
+      return 'Building character profile…';
+    case BookStatus.StoryPlan:
+      return 'Planning your story…';
+    case BookStatus.PagePlan:
+      return 'Planning pages…';
+    case BookStatus.StoryDraft:
+      return 'Writing your story…';
+    case BookStatus.ChapterGen:
+      return 'Writing chapters…';
+    case BookStatus.IllustPlan:
+      return 'Planning illustrations…';
+    case BookStatus.PreviewReady:
+      return 'Preparing preview…';
+    case BookStatus.ImageGen:
+      return 'Generating images…';
+    case BookStatus.QaReview:
+      return 'Reviewing quality…';
+    case BookStatus.Layout:
+      return 'Designing book pages…';
+    case BookStatus.PdfRender:
+      return 'Rendering PDF…';
+    default:
+      return 'Generation in progress…';
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface EditForm {
@@ -89,6 +133,7 @@ export default function BookDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +165,36 @@ export default function BookDetailPage() {
       cancelled = true;
     };
   }, [id]);
+
+  // Poll while book is in a non-terminal generation state
+  useEffect(() => {
+    if (!book || !isGeneratingBookStatus(book.status)) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void booksApi
+        .get(id)
+        .then((data) => {
+          if (!cancelled) setBook(data);
+        })
+        .catch(() => {});
+    }, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [id, book?.status]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const data = await booksApi.get(id);
+      setBook(data);
+    } catch {
+      // silent — manual retry; load errors handled by main effect
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const startEdit = () => {
     if (!book) return;
@@ -248,6 +323,10 @@ export default function BookDetailPage() {
                   }}
                   generating={generating}
                   generateError={generateError}
+                  onRefresh={() => {
+                    void handleRefresh();
+                  }}
+                  refreshing={refreshing}
                 />
               )}
             </div>
@@ -268,6 +347,8 @@ interface BookDetailViewProps {
   onGenerate: () => void;
   generating: boolean;
   generateError: string | null;
+  onRefresh: () => void;
+  refreshing: boolean;
 }
 
 function BookDetailView({
@@ -278,6 +359,8 @@ function BookDetailView({
   onGenerate,
   generating,
   generateError,
+  onRefresh,
+  refreshing,
 }: BookDetailViewProps) {
   const isDraft = book.status === BookStatus.Created;
   const missingFields = getMissingDraftFields(book);
@@ -301,6 +384,15 @@ function BookDetailView({
         >
           {book.status}
         </span>
+        {!isDraft && (
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="inline-flex h-7 items-center rounded-lg border border-border-default px-2.5 text-xs font-medium text-text-secondary transition-all hover:bg-stone-100 disabled:opacity-60"
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh status'}
+          </button>
+        )}
       </div>
 
       <dl className="mb-6 divide-y divide-border-subtle text-sm">
@@ -439,9 +531,9 @@ function BookDetailView({
 
       <PdfSection book={book} />
 
-      {!isDraft && (
+      {!isDraft && isGeneratingBookStatus(book.status) && (
         <p className="mb-4 rounded-lg bg-violet-50 px-4 py-3 text-sm text-violet-700">
-          Generation has started. This draft can no longer be edited.
+          {generationStatusMessage(book.status)} This draft can no longer be edited.
         </p>
       )}
 

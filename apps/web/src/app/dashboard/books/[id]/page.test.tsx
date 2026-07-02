@@ -632,14 +632,14 @@ describe('BookDetailPage', () => {
     expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
   });
 
-  it('shows "Generation has started" note when status is story_draft', async () => {
+  it('shows "Writing your story…" message when status is story_draft', async () => {
     const storyDraftBook = { ...MOCK_BOOK, status: BookStatus.StoryDraft };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(storyDraftBook));
 
     render(<BookDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/generation has started/i)).toBeDefined();
+      expect(screen.getByText(/writing your story/i)).toBeDefined();
     });
   });
 
@@ -787,14 +787,14 @@ describe('BookDetailPage', () => {
     expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
   });
 
-  it('shows "Generation has started" note when status is illust_plan', async () => {
+  it('shows "Planning illustrations…" message when status is illust_plan', async () => {
     const illustPlanBook = { ...MOCK_BOOK, status: BookStatus.IllustPlan };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(illustPlanBook));
 
     render(<BookDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/generation has started/i)).toBeDefined();
+      expect(screen.getByText(/planning illustrations/i)).toBeDefined();
     });
   });
 
@@ -917,7 +917,7 @@ describe('BookDetailPage', () => {
     expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
   });
 
-  it('shows "Generation has started" note when status is preview_ready', async () => {
+  it('shows "Preparing preview…" message when status is preview_ready', async () => {
     const bookWithPreview = {
       ...MOCK_BOOK,
       status: BookStatus.PreviewReady,
@@ -928,7 +928,7 @@ describe('BookDetailPage', () => {
     render(<BookDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/generation has started/i)).toBeDefined();
+      expect(screen.getByText(/preparing preview/i)).toBeDefined();
     });
   });
 
@@ -948,14 +948,14 @@ describe('BookDetailPage', () => {
     expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
   });
 
-  it('shows a "Generation has started" note when status is not created', async () => {
+  it('shows "Planning your story…" message when status is story_plan', async () => {
     const inProgress = { ...MOCK_BOOK, status: BookStatus.StoryPlan };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(inProgress));
 
     render(<BookDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/generation has started/i)).toBeDefined();
+      expect(screen.getByText(/planning your story/i)).toBeDefined();
     });
   });
 
@@ -984,14 +984,14 @@ describe('BookDetailPage', () => {
     expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
   });
 
-  it('shows a "Generation has started" note when status is page_plan', async () => {
+  it('shows "Planning pages…" message when status is page_plan', async () => {
     const pagePlanBook = { ...MOCK_BOOK, status: BookStatus.PagePlan };
     vi.mocked(fetch).mockResolvedValueOnce(mockOk(pagePlanBook));
 
     render(<BookDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/generation has started/i)).toBeDefined();
+      expect(screen.getByText(/planning pages/i)).toBeDefined();
     });
   });
 
@@ -1275,5 +1275,196 @@ describe('BookDetailPage', () => {
       expect(screen.queryByRole('heading', { name: /your pdf is ready/i })).toBeNull();
       expect(screen.queryByRole('heading', { name: /rendering pdf/i })).toBeNull();
     });
+  });
+
+  // ── Polling ───────────────────────────────────────────────────────────────
+
+  describe('Polling', () => {
+    // Only fake setInterval/clearInterval so waitFor (which uses setTimeout) still works.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('polls for updates when status is non-terminal and updates the UI', async () => {
+      const generatingBook: BookDto = { ...MOCK_BOOK, status: BookStatus.PdfRender };
+      const completeBook: BookDto = {
+        ...MOCK_BOOK,
+        status: BookStatus.Complete,
+        previewPdfUrl: '/files/books/book-1/storybook.pdf',
+      };
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(mockOk(generatingBook))
+        .mockResolvedValue(mockOk(completeBook));
+
+      render(<BookDetailPage />);
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: /rendering pdf/i })).toBeDefined(),
+      );
+
+      await vi.advanceTimersByTimeAsync(2500);
+
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: /your pdf is ready/i })).toBeDefined(),
+      );
+    });
+
+    it('stops polling when status becomes complete', async () => {
+      const generatingBook: BookDto = { ...MOCK_BOOK, status: BookStatus.Layout };
+      const completeBook: BookDto = {
+        ...MOCK_BOOK,
+        status: BookStatus.Complete,
+        previewPdfUrl: '/files/books/book-1/storybook.pdf',
+      };
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(mockOk(generatingBook))
+        .mockResolvedValueOnce(mockOk(completeBook));
+
+      render(<BookDetailPage />);
+      await waitFor(() => expect(screen.getByText('layout')).toBeDefined());
+
+      await vi.advanceTimersByTimeAsync(2500);
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: /your pdf is ready/i })).toBeDefined(),
+      );
+
+      const callCountAfterComplete = vi.mocked(fetch).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(vi.mocked(fetch).mock.calls.length).toBe(callCountAfterComplete);
+    });
+
+    it('stops polling when status becomes failed', async () => {
+      const generatingBook: BookDto = { ...MOCK_BOOK, status: BookStatus.StoryDraft };
+      const failedBook: BookDto = { ...MOCK_BOOK, status: BookStatus.Failed };
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(mockOk(generatingBook))
+        .mockResolvedValueOnce(mockOk(failedBook));
+
+      render(<BookDetailPage />);
+      await waitFor(() => expect(screen.getByText(/writing your story/i)).toBeDefined());
+
+      await vi.advanceTimersByTimeAsync(2500);
+      await waitFor(() => expect(screen.getByText(/generation failed/i)).toBeDefined());
+
+      const callCountAfterFailed = vi.mocked(fetch).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(vi.mocked(fetch).mock.calls.length).toBe(callCountAfterFailed);
+    });
+
+    it('does not start polling when status is already terminal on initial load', async () => {
+      const completeBook: BookDto = {
+        ...MOCK_BOOK,
+        status: BookStatus.Complete,
+        previewPdfUrl: '/files/books/book-1/storybook.pdf',
+      };
+
+      vi.mocked(fetch).mockResolvedValueOnce(mockOk(completeBook));
+
+      render(<BookDetailPage />);
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: /your pdf is ready/i })).toBeDefined(),
+      );
+
+      const callCountAfterLoad = vi.mocked(fetch).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(vi.mocked(fetch).mock.calls.length).toBe(callCountAfterLoad);
+    });
+  });
+
+  // ── Manual refresh button ─────────────────────────────────────────────────
+
+  it('shows "Refresh status" button for non-draft books', async () => {
+    const inProgress = { ...MOCK_BOOK, status: BookStatus.StoryPlan };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(inProgress));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /refresh status/i })).toBeDefined();
+    });
+  });
+
+  it('does not show "Refresh status" button for draft books', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(MOCK_BOOK));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => screen.getByRole('button', { name: /generate story/i }));
+
+    expect(screen.queryByRole('button', { name: /refresh status/i })).toBeNull();
+  });
+
+  it('Refresh status button fetches updated book and shows PDF links', async () => {
+    const user = userEvent.setup();
+    const generatingBook: BookDto = { ...MOCK_BOOK, status: BookStatus.PdfRender };
+    const completeBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Complete,
+      previewPdfUrl: '/files/books/book-1/storybook.pdf',
+    };
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockOk(generatingBook))
+      .mockResolvedValueOnce(mockOk(completeBook));
+
+    render(<BookDetailPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /rendering pdf/i })).toBeDefined(),
+    );
+
+    await user.click(screen.getByRole('button', { name: /refresh status/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /your pdf is ready/i })).toBeDefined(),
+    );
+    expect(screen.getByRole('link', { name: /open pdf/i })).toBeDefined();
+    expect(screen.getByRole('link', { name: /download pdf/i })).toBeDefined();
+  });
+
+  // ── Status messages ───────────────────────────────────────────────────────
+
+  it('shows "Rendering PDF…" status message in banner when status is pdf_render', async () => {
+    const pdfRenderBook: BookDto = { ...MOCK_BOOK, status: BookStatus.PdfRender };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(pdfRenderBook));
+
+    render(<BookDetailPage />);
+
+    // Both the PdfSection heading and the generating banner contain "Rendering PDF"
+    await waitFor(() => {
+      expect(screen.getAllByText(/rendering pdf/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows "Designing book pages…" status message when status is layout', async () => {
+    const layoutBook: BookDto = { ...MOCK_BOOK, status: BookStatus.Layout };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(layoutBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/designing book pages/i)).toBeDefined();
+    });
+  });
+
+  it('does not show the generating status banner for complete status', async () => {
+    const completeBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Complete,
+      previewPdfUrl: null,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(completeBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/book is complete, but pdf link is not available yet/i)).toBeDefined(),
+    );
+
+    expect(screen.queryByText(/generation in progress/i)).toBeNull();
   });
 });
