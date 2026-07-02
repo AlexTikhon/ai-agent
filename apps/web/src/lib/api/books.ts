@@ -7,6 +7,13 @@ import type {
 } from '@book/types';
 import { apiFetch } from './client';
 
+const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/api';
+
+/** Returns the stable API endpoint URL for a book's preview PDF. */
+export function bookPdfPreviewUrl(bookId: string): string {
+  return `${API_BASE}/books/${bookId}/pdf/preview`;
+}
+
 export const booksApi = {
   list: (page = 1, limit = 20): Promise<BooksPageDto> =>
     apiFetch(`/books?page=${page}&limit=${limit}`),

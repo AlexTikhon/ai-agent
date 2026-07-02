@@ -10,8 +10,11 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { User } from '@prisma/client';
 import type { BookDto, BooksPageDto, GenerateBookResponse } from '@book/types';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -51,6 +54,21 @@ export class BooksController {
     @Body() dto: UpdateBookDto,
   ): Promise<BookDto> {
     return this.booksService.update(id, user.id, dto);
+  }
+
+  @Get(':id/pdf/preview')
+  async getPreviewPdf(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const result = await this.booksService.getPreviewPdfBuffer(id, user.id);
+    res.set({
+      'Content-Type': result.contentType,
+      'Content-Disposition': `inline; filename="${result.filename}"`,
+      'Content-Length': String(result.buffer.length),
+    });
+    return new StreamableFile(result.buffer);
   }
 
   @Post(':id/generate')

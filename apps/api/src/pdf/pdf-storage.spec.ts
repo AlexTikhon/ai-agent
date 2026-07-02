@@ -81,6 +81,50 @@ describe('LocalPdfStorage', () => {
   });
 });
 
+describe('LocalPdfStorage.getPreviewPdf', () => {
+  let storage: LocalPdfStorage;
+
+  beforeEach(() => {
+    storage = new LocalPdfStorage();
+  });
+
+  afterEach(async () => {
+    if (existsSync(TEST_DIR)) {
+      await rm(TEST_DIR, { recursive: true });
+    }
+  });
+
+  it('returns null when the file does not exist', async () => {
+    const result = await storage.getPreviewPdf(TEST_BOOK_ID);
+    expect(result).toBeNull();
+  });
+
+  it('returns a buffer matching the saved PDF after a save', async () => {
+    const buffer = Buffer.from('%PDF-1.4 read-back test');
+    await storage.savePreviewPdf(TEST_BOOK_ID, buffer);
+    const result = await storage.getPreviewPdf(TEST_BOOK_ID);
+    expect(result).not.toBeNull();
+    expect(result!.buffer.equals(buffer)).toBe(true);
+  });
+
+  it('returns contentType "application/pdf"', async () => {
+    await storage.savePreviewPdf(TEST_BOOK_ID, Buffer.from('%PDF'));
+    const result = await storage.getPreviewPdf(TEST_BOOK_ID);
+    expect(result!.contentType).toBe('application/pdf');
+  });
+
+  it('returns filename storyme-preview-<bookId>.pdf', async () => {
+    await storage.savePreviewPdf(TEST_BOOK_ID, Buffer.from('%PDF'));
+    const result = await storage.getPreviewPdf(TEST_BOOK_ID);
+    expect(result!.filename).toBe(`storyme-preview-${TEST_BOOK_ID}.pdf`);
+  });
+
+  it('rejects for bookIds containing path-traversal characters', async () => {
+    await expect(storage.getPreviewPdf('../evil')).rejects.toThrow();
+    await expect(storage.getPreviewPdf('foo/bar')).rejects.toThrow();
+  });
+});
+
 describe('createPdfStorage', () => {
   it('defaults to local driver when no argument is passed', () => {
     const storage = createPdfStorage();

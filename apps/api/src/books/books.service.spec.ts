@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import type { Book } from '@prisma/client';
 import { BooksService } from './books.service';
 import type { AgentService } from '../agent/agent.service';
+import type { PdfStorage } from '../pdf/pdf-storage';
 import { createMockPrisma } from '../common/test-utils/mock-prisma';
 import type { CreateBookDto } from './dto/create-book.dto';
 import type { UpdateBookDto } from './dto/update-book.dto';
@@ -11,6 +12,13 @@ type MockPrisma = ReturnType<typeof createMockPrisma>;
 
 function createMockAgentService(): jest.Mocked<AgentService> {
   return { startBookGeneration: vi.fn() } as unknown as jest.Mocked<AgentService>;
+}
+
+function createMockPdfStorage(): jest.Mocked<PdfStorage> {
+  return {
+    savePreviewPdf: vi.fn(),
+    getPreviewPdf: vi.fn(),
+  } as unknown as jest.Mocked<PdfStorage>;
 }
 
 // Prisma emits string enum values that match the schema — 'created', 'preview_ready', etc.
@@ -70,11 +78,13 @@ describe('BooksService', () => {
   let service: BooksService;
   let prisma: MockPrisma;
   let agentService: ReturnType<typeof createMockAgentService>;
+  let pdfStorage: ReturnType<typeof createMockPdfStorage>;
 
   beforeEach(() => {
     prisma = createMockPrisma();
     agentService = createMockAgentService();
-    service = new BooksService(prisma as never, agentService as never);
+    pdfStorage = createMockPdfStorage();
+    service = new BooksService(prisma as never, agentService as never, pdfStorage as never);
   });
 
   // ─── create ──────────────────────────────────────────────────────────────────
@@ -350,6 +360,62 @@ describe('BooksService', () => {
 
       expect(agentService.startBookGeneration).toHaveBeenCalledOnce();
       expect(agentService.startBookGeneration).toHaveBeenCalledWith(book);
+    });
+  });
+
+  // ─── getPreviewPdfBuffer ──────────────────────────────────────────────────────
+
+  describe('getPreviewPdfBuffer', () => {
+    const PDF_RESULT = {
+      buffer: Buffer.from('%PDF-1.4 test'),
+      contentType: 'application/pdf' as const,
+      filename: 'storyme-preview-b-1.pdf',
+    };
+
+    it('returns PDF buffer for a complete book with previewPdfUrl and existing file', async () => {
+      const book = makeBook({ previewPdfUrl: '/files/books/b-1/storybook.pdf' });
+      prisma.book.findFirst.mockResolvedValue(book);
+      pdfStorage.getPreviewPdf.mockResolvedValue(PDF_RESULT);
+
+      const result = await service.getPreviewPdfBuffer('b-1', 'u-1');
+
+      expect(pdfStorage.getPreviewPdf).toHaveBeenCalledWith('b-1');
+      expect(result.contentType).toBe('application/pdf');
+      expect(result.buffer).toBe(PDF_RESULT.buffer);
+      expect(result.filename).toBe('storyme-preview-b-1.pdf');
+    });
+
+    it('throws NotFoundException when book does not exist', async () => {
+      prisma.book.findFirst.mockResolvedValue(null);
+
+      await expect(service.getPreviewPdfBuffer('no-such', 'u-1')).rejects.toThrow(NotFoundException);
+      expect(pdfStorage.getPreviewPdf).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when previewPdfUrl is null', async () => {
+      const book = makeBook({ previewPdfUrl: null });
+      prisma.book.findFirst.mockResolvedValue(book);
+
+      await expect(service.getPreviewPdfBuffer('b-1', 'u-1')).rejects.toThrow(ConflictException);
+      expect(pdfStorage.getPreviewPdf).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when storage returns null (file missing)', async () => {
+      const book = makeBook({ previewPdfUrl: '/files/books/b-1/storybook.pdf' });
+      prisma.book.findFirst.mockResolvedValue(book);
+      pdfStorage.getPreviewPdf.mockResolvedValue(null);
+
+      await expect(service.getPreviewPdfBuffer('b-1', 'u-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('error message for missing file does not contain the absolute path', async () => {
+      const book = makeBook({ previewPdfUrl: '/files/books/b-1/storybook.pdf' });
+      prisma.book.findFirst.mockResolvedValue(book);
+      pdfStorage.getPreviewPdf.mockResolvedValue(null);
+
+      const err = await service.getPreviewPdfBuffer('b-1', 'u-1').catch((e: unknown) => e);
+      expect(err instanceof NotFoundException).toBe(true);
+      expect(String((err as NotFoundException).message)).not.toMatch(/[A-Za-z]:\\|\/tmp\//);
     });
   });
 });

@@ -1153,7 +1153,7 @@ describe('BookDetailPage', () => {
     });
   });
 
-  it('Open PDF link resolves the relative previewPdfUrl against the API origin', async () => {
+  it('Open PDF link uses the stable API endpoint /books/:id/pdf/preview', async () => {
     const completeBook: BookDto = {
       ...MOCK_BOOK,
       status: BookStatus.Complete,
@@ -1166,12 +1166,12 @@ describe('BookDetailPage', () => {
     await waitFor(() => {
       const link = screen.getByRole('link', { name: /open pdf/i }) as HTMLAnchorElement;
       expect(link.getAttribute('href')).toBe(
-        'http://localhost:4000/files/books/book-1/storybook.pdf',
+        'http://localhost:4000/api/books/book-1/pdf/preview',
       );
     });
   });
 
-  it('Download PDF link has the storyme-book.pdf download attribute', async () => {
+  it('Download PDF link uses API endpoint and sets storyme-preview-<id>.pdf as download filename', async () => {
     const completeBook: BookDto = {
       ...MOCK_BOOK,
       status: BookStatus.Complete,
@@ -1183,7 +1183,10 @@ describe('BookDetailPage', () => {
 
     await waitFor(() => {
       const link = screen.getByRole('link', { name: /download pdf/i }) as HTMLAnchorElement;
-      expect(link.download).toBe('storyme-book.pdf');
+      expect(link.getAttribute('href')).toBe(
+        'http://localhost:4000/api/books/book-1/pdf/preview',
+      );
+      expect(link.download).toBe('storyme-preview-book-1.pdf');
     });
   });
 

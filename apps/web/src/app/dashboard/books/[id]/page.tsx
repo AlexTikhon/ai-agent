@@ -15,9 +15,8 @@ import type {
   ImageGenerationResult,
   PagePlan,
 } from '@book/types';
-import { booksApi } from '@/lib/api/books';
+import { booksApi, bookPdfPreviewUrl } from '@/lib/api/books';
 import { ApiError } from '@/lib/api/client';
-import { resolveAssetUrl } from '@/lib/api/asset-url';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -957,7 +956,10 @@ function EditFormFields({ values, onChange, submitting, onCancel }: EditFormFiel
 // ── PdfSection ────────────────────────────────────────────────────────────────
 
 function PdfSection({ book }: { book: BookDto }) {
-  const pdfUrl = book.previewPdfUrl ? resolveAssetUrl(book.previewPdfUrl) : null;
+  const pdfApiUrl =
+    book.status === BookStatus.Complete && book.previewPdfUrl
+      ? bookPdfPreviewUrl(book.id)
+      : null;
 
   if (book.status === BookStatus.PdfRender) {
     return (
@@ -973,7 +975,7 @@ function PdfSection({ book }: { book: BookDto }) {
   }
 
   if (book.status === BookStatus.Complete) {
-    if (pdfUrl) {
+    if (pdfApiUrl) {
       return (
         <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <h2 className="mb-1 font-display text-base font-semibold text-emerald-800">
@@ -982,7 +984,7 @@ function PdfSection({ book }: { book: BookDto }) {
           <p className="mb-4 text-xs text-emerald-600">Preview PDF · locally generated file</p>
           <div className="flex gap-3">
             <a
-              href={pdfUrl}
+              href={pdfApiUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex h-9 items-center rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-brand transition-all hover:bg-violet-500"
@@ -990,8 +992,8 @@ function PdfSection({ book }: { book: BookDto }) {
               Open PDF
             </a>
             <a
-              href={pdfUrl}
-              download="storyme-book.pdf"
+              href={pdfApiUrl}
+              download={`storyme-preview-${book.id}.pdf`}
               className="inline-flex h-9 items-center rounded-xl border border-border-default px-4 text-sm font-semibold text-text-secondary transition-all hover:bg-stone-100"
             >
               Download PDF

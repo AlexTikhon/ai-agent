@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { BookStatus, type Book } from '@prisma/client';
 import type { BookDto, BooksPageDto, GenerateBookResponse } from '@book/types';
 import { PrismaService } from '../database/prisma.service';
 import { AgentService } from '../agent/agent.service';
+import { PDF_STORAGE_TOKEN, type PdfStorage } from '../pdf/pdf-storage';
 import { toBookDto } from './books.mapper';
 import type { CreateBookDto } from './dto/create-book.dto';
 import type { UpdateBookDto } from './dto/update-book.dto';
@@ -17,6 +19,7 @@ export class BooksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly agentService: AgentService,
+    @Inject(PDF_STORAGE_TOKEN) private readonly pdfStorage: PdfStorage,
   ) {}
 
   async create(userId: string, dto: CreateBookDto): Promise<BookDto> {
@@ -97,6 +100,21 @@ export class BooksService {
 
     const updated = await this.agentService.startBookGeneration(book);
     return { book: toBookDto(updated) };
+  }
+
+  async getPreviewPdfBuffer(
+    bookId: string,
+    userId: string,
+  ): Promise<{ buffer: Buffer; contentType: 'application/pdf'; filename: string }> {
+    const book = await this.findOwnedOrThrow(bookId, userId);
+    if (!book.previewPdfUrl) {
+      throw new ConflictException('PDF not ready — book generation is not complete');
+    }
+    const result = await this.pdfStorage.getPreviewPdf(bookId);
+    if (!result) {
+      throw new NotFoundException('PDF file not found in storage');
+    }
+    return result;
   }
 
   /** Looks up a book and verifies ownership in one query — 404s rather than leaking existence of another user's book. */
