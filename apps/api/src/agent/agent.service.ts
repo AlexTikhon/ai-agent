@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AgentLogStatus, AgentStep, BookStatus, Prisma, type Book } from '@prisma/client';
 import { renderStorybookPdf } from '../pdf/pdf-renderer';
-import { saveBookPdf } from '../pdf/pdf-storage';
+import { PDF_STORAGE_TOKEN, type PdfStorage } from '../pdf/pdf-storage';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import {
@@ -419,7 +419,10 @@ function buildBookLayout(
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(PDF_STORAGE_TOKEN) private readonly pdfStorage: PdfStorage,
+  ) {}
 
   async startBookGeneration(book: Book): Promise<Book> {
     const traceId = randomUUID();
@@ -457,8 +460,8 @@ export class AgentService {
 
     try {
       const buffer = await renderStorybookPdf(bookLayout);
-      const saved = await saveBookPdf(book.id, buffer);
-      previewPdfUrl = saved.pdfUrl;
+      const saved = await this.pdfStorage.savePreviewPdf(book.id, buffer);
+      previewPdfUrl = saved.url;
     } catch (err) {
       pdfRenderLogStatus = AgentLogStatus.error;
       pdfRenderError = err instanceof Error ? err.message : String(err);

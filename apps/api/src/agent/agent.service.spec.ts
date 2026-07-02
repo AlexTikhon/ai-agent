@@ -2,17 +2,13 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { Book } from '@prisma/client';
 import { AgentService } from './agent.service';
 import { createMockPrisma } from '../common/test-utils/mock-prisma';
+import type { PdfStorage } from '../pdf/pdf-storage';
 
 vi.mock('../pdf/pdf-renderer', () => ({
   renderStorybookPdf: vi.fn(),
 }));
 
-vi.mock('../pdf/pdf-storage', () => ({
-  saveBookPdf: vi.fn(),
-}));
-
 import { renderStorybookPdf } from '../pdf/pdf-renderer';
-import { saveBookPdf } from '../pdf/pdf-storage';
 
 type MockPrisma = ReturnType<typeof createMockPrisma>;
 
@@ -68,15 +64,17 @@ function makeBook(overrides: Partial<Book> = {}): Book {
 describe('AgentService', () => {
   let service: AgentService;
   let prisma: MockPrisma;
+  let mockPdfStorage: { savePreviewPdf: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
     prisma = createMockPrisma();
-    service = new AgentService(prisma as never);
+    mockPdfStorage = { savePreviewPdf: vi.fn() };
+    service = new AgentService(prisma as never, mockPdfStorage as unknown as PdfStorage);
     vi.mocked(renderStorybookPdf).mockResolvedValue(Buffer.from('%PDF-1.4 mock'));
-    vi.mocked(saveBookPdf).mockResolvedValue({
-      pdfPath: '/api/tmp/books/b-1/storybook.pdf',
-      pdfUrl: '/files/books/b-1/storybook.pdf',
+    mockPdfStorage.savePreviewPdf.mockResolvedValue({
+      url: '/files/books/b-1/storybook.pdf',
+      path: '/api/tmp/books/b-1/storybook.pdf',
     });
   });
 
@@ -791,7 +789,7 @@ describe('AgentService', () => {
       expect(renderStorybookPdf).toHaveBeenCalledOnce();
     });
 
-    it('calls saveBookPdf with the book id and the rendered buffer', async () => {
+    it('calls pdfStorage.savePreviewPdf with the book id and the rendered buffer', async () => {
       const book = makeBook();
       setupMocks();
       const mockBuffer = Buffer.from('%PDF-1.4 mock');
@@ -799,7 +797,7 @@ describe('AgentService', () => {
 
       await service.startBookGeneration(book);
 
-      expect(saveBookPdf).toHaveBeenCalledWith('b-1', mockBuffer);
+      expect(mockPdfStorage.savePreviewPdf).toHaveBeenCalledWith('b-1', mockBuffer);
     });
 
     it('advances book status to complete on success', async () => {
@@ -812,7 +810,7 @@ describe('AgentService', () => {
       expect(secondCallArg?.data).toMatchObject({ status: 'complete' });
     });
 
-    it('persists previewPdfUrl on the second update', async () => {
+    it('persists previewPdfUrl from storage result on the second update', async () => {
       const book = makeBook();
       setupMocks();
 
@@ -924,6 +922,88 @@ describe('AgentService', () => {
 
       const secondCallArg = prisma.book.update.mock.calls[1]?.[0];
       expect(secondCallArg?.data?.status).not.toBe('complete');
+    });
+
+    // ── Phase 2M: Storage failure ─────────────────────────────────────────────
+
+    it('marks book as failed when pdfStorage.savePreviewPdf throws', async () => {
+      const book = makeBook();
+      setupMocks();
+      mockPdfStorage.savePreviewPdf.mockRejectedValue(new Error('disk full'));
+      prisma.book.update.mockReset();
+      prisma.book.update
+        .mockResolvedValueOnce(makeBook({ status: 'layout' as Book['status'] }))
+        .mockResolvedValueOnce(makeBook({ status: 'failed' as Book['status'] }));
+
+      await service.startBookGeneration(book);
+
+      const secondCallArg = prisma.book.update.mock.calls[1]?.[0];
+      expect(secondCallArg?.data?.status).toBe('failed');
+    });
+
+    it('does not mark book complete when storage fails', async () => {
+      const book = makeBook();
+      setupMocks();
+      mockPdfStorage.savePreviewPdf.mockRejectedValue(new Error('storage error'));
+      prisma.book.update.mockReset();
+      prisma.book.update
+        .mockResolvedValueOnce(makeBook({ status: 'layout' as Book['status'] }))
+        .mockResolvedValueOnce(makeBook({ status: 'failed' as Book['status'] }));
+
+      await service.startBookGeneration(book);
+
+      const secondCallArg = prisma.book.update.mock.calls[1]?.[0];
+      expect(secondCallArg?.data?.status).not.toBe('complete');
+    });
+
+    it('does not persist previewPdfUrl when storage fails', async () => {
+      const book = makeBook();
+      setupMocks();
+      mockPdfStorage.savePreviewPdf.mockRejectedValue(new Error('storage error'));
+      prisma.book.update.mockReset();
+      prisma.book.update
+        .mockResolvedValueOnce(makeBook({ status: 'layout' as Book['status'] }))
+        .mockResolvedValueOnce(makeBook({ status: 'failed' as Book['status'] }));
+
+      await service.startBookGeneration(book);
+
+      const secondCallArg = prisma.book.update.mock.calls[1]?.[0];
+      expect(secondCallArg?.data).not.toHaveProperty('previewPdfUrl');
+    });
+
+    it('persists errorMessage and failedStep when storage fails', async () => {
+      const book = makeBook();
+      setupMocks();
+      mockPdfStorage.savePreviewPdf.mockRejectedValue(new Error('disk full'));
+      prisma.book.update.mockReset();
+      prisma.book.update
+        .mockResolvedValueOnce(makeBook({ status: 'layout' as Book['status'] }))
+        .mockResolvedValueOnce(makeBook({ status: 'failed' as Book['status'] }));
+
+      await service.startBookGeneration(book);
+
+      const secondCallArg = prisma.book.update.mock.calls[1]?.[0];
+      expect(secondCallArg?.data?.errorMessage).toBe('disk full');
+      expect(secondCallArg?.data?.failedStep).toBe('pdf_render');
+    });
+
+    it('pdf_render AgentLog entry has status error when storage fails', async () => {
+      const book = makeBook();
+      setupMocks();
+      mockPdfStorage.savePreviewPdf.mockRejectedValue(new Error('write failed'));
+      prisma.book.update.mockReset();
+      prisma.book.update
+        .mockResolvedValueOnce(makeBook({ status: 'layout' as Book['status'] }))
+        .mockResolvedValueOnce(makeBook({ status: 'failed' as Book['status'] }));
+
+      await service.startBookGeneration(book);
+
+      const entries = prisma.agentLog.createMany.mock.calls[0]?.[0]?.data as Array<
+        Record<string, unknown>
+      >;
+      const pdfEntry = entries.find((e) => e.step === 'pdf_render');
+      expect(pdfEntry?.status).toBe('error');
+      expect(pdfEntry?.error).toBe('write failed');
     });
   });
 });
