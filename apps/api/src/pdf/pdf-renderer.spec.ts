@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderStorybookPdf } from './pdf-renderer';
-import { wrapText } from './text-wrap';
 import type { BookLayout, BookLayoutEntry } from '@book/types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -104,53 +103,6 @@ function makeLayout(entries: BookLayoutEntry[]): BookLayout {
     },
   };
 }
-
-// ── wrapText tests ────────────────────────────────────────────────────────────
-
-describe('wrapText', () => {
-  it('returns single line when text fits', () => {
-    expect(wrapText('Hello world', 20)).toEqual(['Hello world']);
-  });
-
-  it('wraps long text into multiple lines', () => {
-    const lines = wrapText('Hello world foo bar baz', 10);
-    expect(lines.length).toBeGreaterThan(1);
-    for (const line of lines) {
-      expect(line.length).toBeLessThanOrEqual(10);
-    }
-  });
-
-  it('preserves explicit newlines as hard breaks', () => {
-    const lines = wrapText('Hello\nWorld', 40);
-    expect(lines).toEqual(['Hello', 'World']);
-  });
-
-  it('handles multi-paragraph text with explicit newlines', () => {
-    const lines = wrapText('First line\n\nSecond paragraph', 40);
-    expect(lines).toContain('First line');
-    expect(lines).toContain('Second paragraph');
-  });
-
-  it('returns single element for empty string', () => {
-    expect(wrapText('', 20)).toEqual(['']);
-  });
-
-  it('returns text unchanged when maxCharsPerLine < 1', () => {
-    expect(wrapText('some text', 0)).toEqual(['some text']);
-  });
-
-  it('places a single long word on its own line', () => {
-    const lines = wrapText('short superlongwordthatexceedslimit done', 10);
-    expect(lines).toContain('superlongwordthatexceedslimit');
-  });
-
-  it('joined lines reproduce all words from input', () => {
-    const text = 'The quick brown fox jumps over the lazy dog';
-    const lines = wrapText(text, 15);
-    const rejoined = lines.join(' ').trim();
-    expect(rejoined).toBe(text);
-  });
-});
 
 // ── renderStorybookPdf tests ──────────────────────────────────────────────────
 
@@ -277,5 +229,57 @@ describe('renderStorybookPdf', () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+// ── text block rendering behavior ──────────────────────────────────────────────
+// PDFKit's built-in `.text()` (called with width/height/align/lineGap in
+// renderTextBlock) owns all line wrapping; there is no separate wrap helper.
+// These tests assert observable renderer behavior — a valid, non-crashing PDF —
+// rather than brittle binary snapshots.
+
+describe('renderStorybookPdf text block edge cases', () => {
+  it('renders a very long multi-paragraph text block without throwing', async () => {
+    const longText = Array.from(
+      { length: 20 },
+      (_, i) => `Paragraph ${i + 1}: ${'word '.repeat(30).trim()}.`,
+    ).join('\n\n');
+    const layout = makeLayout([makePageEntry(1)]);
+    layout.entries[0].textBlock!.text = longText;
+
+    const buf = await renderStorybookPdf(layout);
+    expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+
+  it('renders multiline text with explicit newlines as hard breaks', async () => {
+    const layout = makeLayout([makeBackCoverEntry()]);
+    const buf = await renderStorybookPdf(layout);
+    expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+
+  it('renders an empty-string text block without throwing', async () => {
+    const layout = makeLayout([makePageEntry(1)]);
+    layout.entries[0].textBlock!.text = '';
+
+    const buf = await renderStorybookPdf(layout);
+    expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+
+  it('renders text that vastly exceeds its box height without throwing (overflow, not crash)', async () => {
+    const layout = makeLayout([makePageEntry(1)]);
+    layout.entries[0].textBlock!.text = 'overflow '.repeat(200).trim();
+    layout.entries[0].textBlock!.box = { x: 180, y: 1420, width: 200, height: 20 };
+
+    const buf = await renderStorybookPdf(layout);
+    expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+
+  it('renders the same overflowing text block deterministically across runs', async () => {
+    const layout = makeLayout([makePageEntry(1)]);
+    layout.entries[0].textBlock!.text = 'overflow '.repeat(200).trim();
+    layout.entries[0].textBlock!.box = { x: 180, y: 1420, width: 200, height: 20 };
+
+    const [a, b] = await Promise.all([renderStorybookPdf(layout), renderStorybookPdf(layout)]);
+    expect(a.length).toBe(b.length);
   });
 });

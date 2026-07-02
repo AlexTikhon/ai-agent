@@ -14,6 +14,15 @@ function pt(px: number): number {
 /**
  * Maps layout font families to built-in PDFKit fonts.
  * Display fonts (Fraunces/serif) → Times; body fonts → Helvetica.
+ *
+ * LIMITATION: PDFKit's built-in Helvetica/Times fonts only support the
+ * WinAnsi (Latin-1-ish) encoding. Non-Latin and many extended Unicode
+ * characters (e.g. CJK, Cyrillic, emoji) will render blank. Fixing this
+ * requires embedding a real Unicode-capable TTF/OTF font via
+ * `doc.registerFont(name, fontFilePathOrBuffer)` and returning its name
+ * here instead of a built-in name — see docs/pdf-rendering.md for the
+ * planned future-phase boundary. Do not add font files or network font
+ * downloads to close this gap without an explicit phase for it.
  */
 function resolveFont(fontFamily: string, isDisplay: boolean): string {
   const f = fontFamily.toLowerCase();
@@ -104,6 +113,11 @@ function renderPage(doc: PDFKit.PDFDocument, entry: BookLayoutEntry): void {
  *
  * Font sizes from the layout are used as PDF points directly (not scaled by SCALE).
  * Coordinate boxes are scaled from the 2400 px canvas to 576 pt PDF page.
+ *
+ * Text line wrapping is delegated entirely to PDFKit's built-in `.text()`
+ * (via the width/height/align/lineGap options in renderTextBlock) — there is
+ * no separate line-wrapping helper in this codebase. See docs/pdf-rendering.md
+ * for current text/font behavior and known limitations.
  */
 export function renderStorybookPdf(layout: BookLayout): Promise<Buffer> {
   if (layout.entries.length === 0) {
