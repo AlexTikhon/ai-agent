@@ -1,14 +1,20 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import { resolve } from 'node:path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log', 'debug'],
   });
+
+  // Serve locally generated book PDFs at /files/books/<bookId>/storybook.pdf
+  // Source directory: apps/api/tmp/ (gitignored)
+  app.useStaticAssets(resolve(__dirname, '..', 'tmp'), { prefix: '/files' });
 
   // ── Security ──────────────────────────────────────────────────────────────
   app.use(helmet());

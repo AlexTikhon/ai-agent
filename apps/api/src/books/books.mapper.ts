@@ -25,6 +25,7 @@ export function toBookDto(book: Book): BookDto {
     bookPreview: book.bookPreview as unknown as BookPreview | null,
     imageGenerationResult: book.imageGenerationResult as unknown as ImageGenerationResult | null,
     bookLayout: book.bookLayout as unknown as BookLayout | null,
+    previewPdfUrl: book.previewPdfUrl,
     createdAt: book.createdAt.toISOString(),
     updatedAt: book.updatedAt.toISOString(),
   };

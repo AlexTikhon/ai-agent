@@ -364,6 +364,8 @@ export interface BookDto {
   bookPreview?: BookPreview | null;
   imageGenerationResult?: ImageGenerationResult | null;
   bookLayout?: BookLayout | null;
+  /** Local URL served at /files/books/<bookId>/storybook.pdf (Phase 2J+). null until pdf_render completes. */
+  previewPdfUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }

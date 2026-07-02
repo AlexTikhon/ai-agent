@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AgentLogStatus, AgentStep, BookStatus, Prisma, type Book } from '@prisma/client';
+import { renderStorybookPdf } from '../pdf/pdf-renderer';
+import { saveBookPdf } from '../pdf/pdf-storage';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import {
@@ -415,6 +417,8 @@ function buildBookLayout(
 
 @Injectable()
 export class AgentService {
+  private readonly logger = new Logger(AgentService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async startBookGeneration(book: Book): Promise<Book> {
@@ -432,7 +436,8 @@ export class AgentService {
     const imageGenerationResult = buildImageGenerationResult(book.id, bookPreview);
     const bookLayout = buildBookLayout(book.id, bookPreview, imageGenerationResult);
 
-    const updated = await this.prisma.book.update({
+    // Phase 1: persist all layout data and advance status to 'layout'
+    await this.prisma.book.update({
       where: { id: book.id },
       data: {
         status: BookStatus.layout,
@@ -443,6 +448,37 @@ export class AgentService {
         imageGenerationResult: imageGenerationResult as unknown as Prisma.InputJsonValue,
         bookLayout: bookLayout as unknown as Prisma.InputJsonValue,
       },
+    });
+
+    // Phase 2: render PDF (pdf_render step)
+    let previewPdfUrl: string | null = null;
+    let pdfRenderLogStatus: AgentLogStatus = AgentLogStatus.success;
+    let pdfRenderError: string | undefined;
+
+    try {
+      const buffer = await renderStorybookPdf(bookLayout);
+      const saved = await saveBookPdf(book.id, buffer);
+      previewPdfUrl = saved.pdfUrl;
+    } catch (err) {
+      pdfRenderLogStatus = AgentLogStatus.error;
+      pdfRenderError = err instanceof Error ? err.message : String(err);
+      this.logger.error(`PDF render failed for book ${book.id}: ${pdfRenderError}`);
+    }
+
+    // Phase 3: advance to 'complete' or 'failed' and persist PDF url/error
+    const finalStatus = pdfRenderError ? BookStatus.failed : BookStatus.complete;
+    const finalData: Prisma.BookUpdateInput = { status: finalStatus };
+    if (previewPdfUrl !== null) {
+      finalData.previewPdfUrl = previewPdfUrl;
+    }
+    if (pdfRenderError) {
+      finalData.errorMessage = pdfRenderError;
+      finalData.failedStep = AgentStep.pdf_render;
+    }
+
+    const updated = await this.prisma.book.update({
+      where: { id: book.id },
+      data: finalData,
     });
 
     await this.prisma.agentLog.createMany({
@@ -510,6 +546,15 @@ export class AgentService {
           status: AgentLogStatus.success,
           attempt: 1,
           traceId,
+        },
+        {
+          bookId: book.id,
+          agent: 'LocalPipelineAgent',
+          step: AgentStep.pdf_render,
+          status: pdfRenderLogStatus,
+          attempt: 1,
+          traceId,
+          ...(pdfRenderError && { error: pdfRenderError }),
         },
       ],
     });
