@@ -181,6 +181,32 @@ alternatives instead).
 - **Payments/auth** — `DevAuthGuard` stands in for real authentication;
   there's no payment gating on generation or preview access.
 
+## Local demo (frontend)
+
+The web app (`apps/web`) already has a full click-through UI for this
+lifecycle — no extra wiring needed.
+
+1. Start the API: `pnpm --filter @book/api dev` (defaults to
+   `http://localhost:4000`).
+2. Start the web app: `pnpm --filter @book/web dev` (defaults to
+   `http://localhost:3000`; set `NEXT_PUBLIC_API_URL` if the API runs
+   elsewhere).
+3. Open `http://localhost:3000/dashboard` — click **+ New Book**, fill in
+   the child/story wizard, and submit to create a `created` book.
+4. Open the new book's detail page and click **Generate Story**. The whole
+   pipeline (story/layout/mock images/PDF render) runs synchronously inside
+   that one request, so the button shows "Generating…" until the response
+   comes back with a final `complete` or `failed` status. If a page reload
+   ever catches the book mid-pipeline, the detail page auto-polls every
+   2.5s until it reaches a terminal status.
+5. Once `status` is `complete`, an "Your PDF is ready" panel appears with
+   **Open PDF** (new tab) and **Download PDF** links, both pointing at
+   `GET /api/books/:id/pdf/preview`.
+
+Everything shown — story text, illustration prompts, image URLs, the PDF
+itself — is mock/local per "What's intentionally not real yet" above; no
+external AI or network calls happen at any point in this flow.
+
 ## How a future real-provider phase should slot in
 
 Both mock boundaries were built so a real provider drops in without
