@@ -82,7 +82,7 @@ export interface CloudPdfStorageConfig {
   forcePathStyle?: boolean;
 }
 
-function objectKey(bookId: string): string {
+export function objectKey(bookId: string): string {
   return `previews/${bookId}/storyme-preview-${bookId}.pdf`;
 }
 
@@ -184,7 +184,7 @@ const CLOUD_REQUIRED_VARS = [
 ] as const;
 
 /** Reads and validates the PDF_STORAGE_* env vars required for the s3/r2 drivers. */
-function readCloudConfig(driver: 's3' | 'r2', env: NodeJS.ProcessEnv): CloudPdfStorageConfig {
+export function readCloudConfig(driver: 's3' | 'r2', env: NodeJS.ProcessEnv): CloudPdfStorageConfig {
   const missing: string[] = CLOUD_REQUIRED_VARS.filter((key) => !env[key]);
   const endpoint = env['PDF_STORAGE_ENDPOINT'];
   // R2 has no default endpoint the SDK can infer, unlike S3.
