@@ -283,3 +283,96 @@ describe('renderStorybookPdf text block edge cases', () => {
     expect(a.length).toBe(b.length);
   });
 });
+
+// ── image embedding ────────────────────────────────────────────────────────────
+// The renderer never fetches URLs itself; `resolveImageBuffer` is a synchronous,
+// local seam a caller may supply to hand over already-available bytes. No
+// caller wires this up yet (see docs/pdf-rendering.md), so omitting it must
+// keep today's placeholder-only behavior unchanged.
+
+describe('renderStorybookPdf image embedding', () => {
+  // Minimal valid 1x1 PNG.
+  const VALID_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  const CORRUPT_BYTES = Buffer.from('this is not an image', 'utf-8');
+
+  it('embeds real image bytes when the resolver supplies them', async () => {
+    const layout = makeLayout([makeCoverEntry()]);
+    const buf = await renderStorybookPdf(layout, {
+      resolveImageBuffer: () => VALID_PNG,
+    });
+
+    expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+    const raw = buf.toString('latin1');
+    expect(raw).toContain('/Subtype /Image');
+  });
+
+  it('falls back to the placeholder rectangle when no resolver is supplied', async () => {
+    const layout = makeLayout([makeCoverEntry()]);
+    const buf = await renderStorybookPdf(layout);
+
+    const raw = buf.toString('latin1');
+    expect(raw).not.toContain('/Subtype /Image');
+  });
+
+  it('falls back to the placeholder when the resolver returns undefined', async () => {
+    const layout = makeLayout([makeCoverEntry()]);
+    const buf = await renderStorybookPdf(layout, {
+      resolveImageBuffer: () => undefined,
+    });
+
+    const raw = buf.toString('latin1');
+    expect(raw).not.toContain('/Subtype /Image');
+  });
+
+  it('falls back to the placeholder and warns when the resolved bytes are corrupt', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const layout = makeLayout([makeCoverEntry()]);
+      const buf = await renderStorybookPdf(layout, {
+        resolveImageBuffer: () => CORRUPT_BYTES,
+      });
+
+      expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+      const raw = buf.toString('latin1');
+      expect(raw).not.toContain('/Subtype /Image');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to embed image for entry "test-cover"'),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('does not fail the whole PDF when one of several images is corrupt', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const layout = makeLayout([makeCoverEntry(), makePageEntry(1), makeBackCoverEntry()]);
+      const buf = await renderStorybookPdf(layout, {
+        resolveImageBuffer: (imageBlock) =>
+          imageBlock.imageUrl.includes('page-1') ? CORRUPT_BYTES : VALID_PNG,
+      });
+
+      expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+      const raw = buf.toString('latin1');
+      // Cover's image embeds fine even though page 1's image is corrupt.
+      expect(raw).toContain('/Subtype /Image');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to embed image for entry "test-page-1"'),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('produces identically sized buffers across runs when embedding the same image bytes', async () => {
+    const layout = makeLayout([makeCoverEntry(), makePageEntry(1)]);
+    const [a, b] = await Promise.all([
+      renderStorybookPdf(layout, { resolveImageBuffer: () => VALID_PNG }),
+      renderStorybookPdf(layout, { resolveImageBuffer: () => VALID_PNG }),
+    ]);
+    expect(a.length).toBe(b.length);
+  });
+});
