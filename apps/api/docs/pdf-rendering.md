@@ -111,26 +111,32 @@ network-free stand-in for a real image-generation provider:
   by hand (an uncompressed-per-pixel raster plus one deflate call), and
   PDFKit's `doc.image()` embeds it directly.
 
-`AgentService.startBookGeneration` calls a private `saveMockImageAssets`
-helper right after building `imageGenerationResult` and before building
-`bookLayout`: for every `GeneratedImageEntry`, it generates bytes from
-`generateMockImagePng(entry.seed)` and saves them via
+`AgentService.startBookGeneration` calls a private
+`generateAndSaveImageAssets` helper right after building
+`imageGenerationResult` and before building `bookLayout`: for every
+`GeneratedImageEntry`, it calls the injected `ImageGenerationProvider`
+(`apps/api/src/images/image-generation-provider.ts` — see
+`apps/api/docs/local-generation-pipeline.md` for the full boundary contract)
+to get bytes, then saves them via
 `ImageAssetStorage.saveImageAsset(imageAssetKey(bookId, entry.kind,
-entry.pageNumber), buffer, 'image/png')`. Saves run in parallel and each is
-wrapped in its own try/catch: a failure logs a warning
-(`Failed to save mock image asset for entry "<id>": <message>`) and is
-skipped — it never fails book generation. Because `buildImageBufferResolver`
-already treats a missing asset as "no bytes available", a skipped save
-degrades that one image to the existing placeholder rectangle, exactly like
-before this phase.
+entry.pageNumber), buffer, contentType)`. The default `MockImageGenerationProvider`
+wraps `generateMockImagePng(entry.seed)`, so its output is byte-identical to
+before this boundary existed. Saves run in parallel and each is wrapped in
+its own try/catch: a failure logs a warning (`Failed to save mock image
+asset for entry "<id>": <message>`) and is skipped — it never fails book
+generation. Because `buildImageBufferResolver` already treats a missing
+asset as "no bytes available", a skipped save degrades that one image to the
+existing placeholder rectangle. A `generateImage` failure from the provider
+itself (as opposed to a storage-save failure) is treated more strictly —
+see "Failure behavior" in `local-generation-pipeline.md`.
 
-This mock producer is explicitly **not** real AI image generation — it
-exists only so the pipeline has *some* real, embeddable image bytes to prove
-the storage → resolver → renderer path end-to-end. A future real
-image-generation phase should replace calls to `generateMockImagePng` with a
-real provider call (kept behind the same `ImageAssetStorage.saveImageAsset`
-boundary) — no changes to `buildImageBufferResolver` or the renderer are
-needed, matching the plan already laid out below.
+`generateMockImagePng` itself is explicitly **not** real AI image
+generation — it exists so the pipeline has *some* real, embeddable image
+bytes to prove the storage → resolver → renderer path end-to-end. A real
+`OpenAIImageGenerationProvider` (behind the same `ImageGenerationProvider`
+interface) also exists and is used when `IMAGE_GENERATION_PROVIDER_TOKEN=openai`
+is explicitly set — see `local-generation-pipeline.md`. No changes to
+`buildImageBufferResolver` or the renderer were needed to add it.
 
 ### Local image asset storage boundary
 
@@ -168,17 +174,18 @@ Out of scope for this boundary, deliberately:
   cloud implementation would follow the same pattern as `CloudPdfStorage`.
 - Publicly serving saved image assets over HTTP.
 
-### Future real-image phase (not implemented)
+### Real-image phase
 
-`AgentService` currently saves deterministic mock bytes from
-`generateMockImagePng` (see "Local mock image producer" above) via
-`ImageAssetStorage.saveImageAsset`, keyed by `imageAssetKey`. A future phase
-that wires up a real image-generation provider should replace that call site
-(`saveMockImageAssets` in `apps/api/src/agent/agent.service.ts`) with a real
-provider call, saved through the same `ImageAssetStorage.saveImageAsset`
-boundary. No changes to `buildImageBufferResolver` or the renderer itself
-are needed — the boundary is already in place end-to-end; saved bytes are
-picked up and embedded automatically on the next render.
+`AgentService` gets image bytes from the injected `ImageGenerationProvider`
+(`apps/api/src/images/image-generation-provider.ts`) and saves them via
+`ImageAssetStorage.saveImageAsset`, keyed by `imageAssetKey`. The default
+`MockImageGenerationProvider` wraps `generateMockImagePng`; a real
+`OpenAIImageGenerationProvider` is selected via
+`IMAGE_GENERATION_PROVIDER_TOKEN=openai` (see
+`local-generation-pipeline.md` for the full boundary contract). No changes
+to `buildImageBufferResolver` or the renderer itself were needed — the
+boundary was already in place end-to-end; saved bytes are picked up and
+embedded automatically on the next render.
 
 ### Failure handling
 

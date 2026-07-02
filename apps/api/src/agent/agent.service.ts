@@ -8,10 +8,20 @@ import {
   IMAGE_ASSET_STORAGE_TOKEN,
   type ImageAssetStorage,
 } from '../images/image-asset-storage';
-import { generateMockImagePng } from '../images/mock-image-producer';
+import {
+  IMAGE_GENERATION_PROVIDER_TOKEN,
+  type ImageGenerationProvider,
+} from '../images/image-generation-provider';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
-import type { BookLayout, BookLayoutEntry, BookPreview, GeneratedImageEntry, ImageGenerationResult } from '@book/types';
+import type {
+  BookLayout,
+  BookLayoutEntry,
+  BookPreview,
+  CharacterCard,
+  GeneratedImageEntry,
+  ImageGenerationResult,
+} from '@book/types';
 import {
   STORY_GENERATION_PROVIDER_TOKEN,
   type StoryGenerationProvider,
@@ -181,26 +191,45 @@ export class AgentService {
     @Inject(IMAGE_ASSET_STORAGE_TOKEN) private readonly imageAssetStorage: ImageAssetStorage,
     @Inject(STORY_GENERATION_PROVIDER_TOKEN)
     private readonly storyGenerationProvider: StoryGenerationProvider,
+    @Inject(IMAGE_GENERATION_PROVIDER_TOKEN)
+    private readonly imageGenerationProvider: ImageGenerationProvider,
   ) {}
 
   /**
-   * Produces deterministic local mock image bytes for each generated image
-   * entry and saves them via ImageAssetStorage, keyed to match
-   * buildImageBufferResolver's lookup (imageAssetKey). A failure saving any
-   * one image is logged and skipped — it must not fail book generation; the
-   * renderer already falls back to a placeholder for any entry whose bytes
-   * are missing (see docs/pdf-rendering.md).
+   * Generates real image bytes for every generated image entry via the
+   * injected ImageGenerationProvider, then saves them via ImageAssetStorage,
+   * keyed to match buildImageBufferResolver's lookup (imageAssetKey).
+   *
+   * Generation and saving are two separate failure domains:
+   * - A provider.generateImage failure (e.g. a real API outage) rejects this
+   *   whole call — the caller treats it like the story-generation failure
+   *   path (book marked failed, failedStep: 'image_gen').
+   * - A storage save failure for one already-generated image is logged and
+   *   skipped — it must not fail book generation; the renderer already falls
+   *   back to a placeholder for any entry whose bytes are missing (see
+   *   docs/pdf-rendering.md).
    */
-  private async saveMockImageAssets(
+  private async generateAndSaveImageAssets(
     bookId: string,
+    characterCard: CharacterCard,
     images: GeneratedImageEntry[],
   ): Promise<void> {
-    await Promise.all(
+    const generated = await Promise.all(
       images.map(async (image) => {
+        const { buffer, contentType } = await this.imageGenerationProvider.generateImage({
+          bookId,
+          entry: image,
+          characterCard,
+        });
+        return { image, buffer, contentType };
+      }),
+    );
+
+    await Promise.all(
+      generated.map(async ({ image, buffer, contentType }) => {
         try {
           const key = imageAssetKey(bookId, image.kind, image.pageNumber);
-          const buffer = generateMockImagePng(image.seed);
-          await this.imageAssetStorage.saveImageAsset(key, buffer, 'image/png');
+          await this.imageAssetStorage.saveImageAsset(key, buffer, contentType);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           this.logger.warn(`Failed to save mock image asset for entry "${image.id}": ${message}`);
@@ -260,7 +289,35 @@ export class AgentService {
       return failed;
     }
 
-    await this.saveMockImageAssets(book.id, imageGenerationResult.images);
+    try {
+      await this.generateAndSaveImageAssets(book.id, characterCard, imageGenerationResult.images);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Image generation failed for book ${book.id}: ${message}`);
+      const failed = await this.prisma.book.update({
+        where: { id: book.id },
+        data: {
+          status: BookStatus.failed,
+          errorMessage: message,
+          failedStep: AgentStep.image_gen,
+        },
+      });
+      await this.prisma.agentLog.createMany({
+        data: [
+          {
+            bookId: book.id,
+            agent: 'LocalPipelineAgent',
+            step: AgentStep.image_gen,
+            status: AgentLogStatus.error,
+            attempt: 1,
+            traceId,
+            error: message,
+          },
+        ],
+      });
+      return failed;
+    }
+
     const bookLayout = buildBookLayout(book.id, bookPreview, imageGenerationResult);
 
     // Phase 1: persist all layout data and advance status to 'layout'

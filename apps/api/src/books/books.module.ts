@@ -5,6 +5,8 @@ import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
 import { createPdfStorage, PDF_STORAGE_TOKEN } from '../pdf/pdf-storage';
 import { IMAGE_ASSET_STORAGE_TOKEN, LocalImageAssetStorage } from '../images/image-asset-storage';
+import { IMAGE_GENERATION_PROVIDER_TOKEN } from '../images/image-generation-provider';
+import { createImageGenerationProvider } from '../images/image-generation-provider.factory';
 import { STORY_GENERATION_PROVIDER_TOKEN } from '../agent/story-generation-provider';
 import { createStoryGenerationProvider } from '../agent/story-generation-provider.factory';
 
@@ -23,6 +25,10 @@ import { createStoryGenerationProvider } from '../agent/story-generation-provide
     {
       provide: STORY_GENERATION_PROVIDER_TOKEN,
       useFactory: () => createStoryGenerationProvider(),
+    },
+    {
+      provide: IMAGE_GENERATION_PROVIDER_TOKEN,
+      useFactory: () => createImageGenerationProvider(),
     },
     BooksService,
     AgentService,

@@ -42,15 +42,24 @@ request handler and the HTTP response only returns once the whole pipeline
   `errorMessage` from the caught error), writes a single `story_plan`
   `AgentLog` row with `status: 'error'`, and returns immediately — none of
   the steps below run.
-- (b) `saveMockImageAssets` (private helper) — for every
-  `GeneratedImageEntry` in the provider's `imageGenerationResult`, generates
-  deterministic PNG bytes via `generateMockImagePng(entry.seed)`
-  (`apps/api/src/images/mock-image-producer.ts`) and saves them through
+- (b) `generateAndSaveImageAssets` (private helper) — for every
+  `GeneratedImageEntry` in the provider's `imageGenerationResult`, calls the
+  injected `ImageGenerationProvider.generateImage({ bookId, entry,
+  characterCard })` (see "Image generation provider boundary" below) to get
+  real image bytes, then saves them through
   `ImageAssetStorage.saveImageAsset(imageAssetKey(bookId, kind, pageNumber),
-  buffer, 'image/png')`. Saves run in parallel; a failure on any one image is
-  caught, logged (`Failed to save mock image asset for entry "<id>": ...`),
-  and skipped — it does **not** fail generation. A skipped image just
-  degrades to a placeholder rectangle at render time (see below).
+  buffer, contentType)`. This step has two separate failure domains:
+  - If any `generateImage` call throws (e.g. a real provider's API outage),
+    the whole call rejects. `AgentService` catches it before Phase 1 runs,
+    marks the book `failed` (`failedStep: 'image_gen'`, `errorMessage` from
+    the caught error), writes a single `image_gen` `AgentLog` row with
+    `status: 'error'`, and returns immediately — no layout is built, no PDF
+    is rendered.
+  - Once an image's bytes exist, saving them runs in parallel with the
+    others; a failure on any one `saveImageAsset` call is caught, logged
+    (`Failed to save mock image asset for entry "<id>": ...`), and skipped —
+    it does **not** fail generation. A skipped image just degrades to a
+    placeholder rectangle at render time (see below).
 - (c) `buildBookLayout` (private function in `agent.service.ts`) — builds the
   print-ready `BookLayout` (2400×2400px canvas, `square_8x8` trim),
   referencing the same mock `imageUrl`s. This step stays in `AgentService`
@@ -204,6 +213,78 @@ in `apps/api/.env`, then run `pnpm --filter @book/api dev` and generate a book
 as usual. **CI and the test suite never do this** — they always run with the
 default mock provider.
 
+## Image generation provider boundary
+
+`apps/api/src/images/image-generation-provider.ts` defines
+`ImageGenerationProvider`, the internal boundary `AgentService` depends on
+for producing the actual image *bytes* for one `GeneratedImageEntry`
+(cover/page/back_cover), mirroring the `StoryGenerationProvider` pattern:
+
+```ts
+interface ImageGenerationInput {
+  bookId: string;
+  entry: GeneratedImageEntry;
+  characterCard: CharacterCard;
+}
+
+interface ImageGenerationOutput {
+  buffer: Buffer;
+  contentType: ImageAssetContentType;
+}
+
+interface ImageGenerationProvider {
+  generateImage(input: ImageGenerationInput): Promise<ImageGenerationOutput>;
+}
+```
+
+- Registered via `IMAGE_GENERATION_PROVIDER_TOKEN` in `books.module.ts`,
+  injected into `AgentService`'s constructor exactly like
+  `STORY_GENERATION_PROVIDER_TOKEN`.
+- `MockImageGenerationProvider` is a thin wrapper around
+  `generateMockImagePng(entry.seed)` — byte-identical to the pre-Phase-3C
+  behavior, just behind the new interface.
+- **Real provider** (`OpenAIImageGenerationProvider`,
+  `apps/api/src/images/openai-image-generation-provider.ts`) calls the
+  OpenAI images API (`POST {baseUrl}/images/generations`, default
+  `https://api.openai.com/v1`, default model `gpt-image-1`) via an
+  injectable `fetchImpl` (defaults to the Node global `fetch`) — no new
+  HTTP/OpenAI SDK dependency. It requests one base64-encoded PNG
+  (`b64_json`) per entry and decodes it directly to a `Buffer`; any
+  fetch failure, non-ok response, invalid JSON, or missing `b64_json` throws
+  `ImageGenerationProviderError` with a clear message.
+- **Prompt** — `buildImagePrompt(characterCard, entry)` is a pure function
+  (no network) that composes a child-safe personalized-storybook-style
+  prompt from the entry's own scene (`entry.prompt`) plus
+  `characterCard.visualAnchor`/`narrativeDescription` (so the protagonist
+  stays visually consistent across every illustration), ending with an
+  explicit no-text/no-caption/no-watermark/no-logo instruction.
+- **Provider selection** — `apps/api/src/images/image-generation-provider.factory.ts`
+  exports `createImageGenerationProvider(env = process.env)`, wired into
+  `books.module.ts`'s `useFactory` for `IMAGE_GENERATION_PROVIDER_TOKEN`:
+  - `IMAGE_GENERATION_PROVIDER_TOKEN` unset, empty, or `"mock"` →
+    `MockImageGenerationProvider`.
+  - `IMAGE_GENERATION_PROVIDER_TOKEN=openai` → `OpenAIImageGenerationProvider`,
+    constructed with `OPENAI_API_KEY` (required — throws a clear `Error` at
+    provider-construction time if missing) and optional `OPENAI_IMAGE_MODEL`
+    (defaults to `gpt-image-1`).
+  - Any other value throws a clear `Error` naming the invalid value.
+- **Failure behavior** — if any `generateImage` call throws,
+  `AgentService.generateAndSaveImageAssets` rejects before any bytes are
+  saved. `AgentService` catches it before Phase 1 runs, marks the book
+  `failed` (`failedStep: 'image_gen'`, `errorMessage` from the caught
+  error's message), writes one `image_gen` `AgentLog` row with `status:
+  'error'`, and returns — no layout is built, no PDF is rendered or stored.
+  This is deliberately stricter than the `ImageAssetStorage.saveImageAsset`
+  per-image swallow-and-continue behavior below it: a generation-provider
+  failure (e.g. a real API outage) is systemic and affects every image,
+  while a storage-save failure is a one-off, recoverable-with-a-placeholder
+  problem.
+
+To try real image generation locally: set `IMAGE_GENERATION_PROVIDER_TOKEN=openai`
+and `OPENAI_API_KEY` in `apps/api/.env`, then run `pnpm --filter @book/api dev`
+and generate a book as usual. **CI and the test suite never do this** — they
+always run with the default mock provider.
+
 ## Status transitions
 
 ```
@@ -252,6 +333,7 @@ re-verified here — see "Test coverage" below.
 | `NotFoundException` (404) | `previewPdfUrl` set but file missing from storage | `GET /:id/pdf/preview` |
 | `BookStatus.failed` | PDF render or `pdfStorage.savePreviewPdf` throws | `POST /:id/generate` response body |
 | `BookStatus.failed` | `storyGenerationProvider.generateStory` throws (`failedStep: 'story_plan'`) | `POST /:id/generate` response body |
+| `BookStatus.failed` | `imageGenerationProvider.generateImage` throws for any entry (`failedStep: 'image_gen'`) | `POST /:id/generate` response body |
 | per-image save failure (non-fatal) | one `ImageAssetStorage.saveImageAsset` call throws | logged only; that image renders as a placeholder |
 
 ## Test coverage
@@ -265,23 +347,36 @@ re-verified here — see "Test coverage" below.
 - `apps/api/src/agent/agent.service.spec.ts` — every stage of
   `startBookGeneration` with `renderStorybookPdf` mocked (story/layout/image
   metadata, AgentLog rows, success/failure status transitions), plus
-  dedicated coverage for the `StoryGenerationProvider` boundary: a failing
+  dedicated coverage for the `StoryGenerationProvider` boundary (a failing
   provider marks the book `failed` without saving images/building
   layout/rendering a PDF, and `AgentService` calls `generateStory` with the
-  expected input.
+  expected input) and the `ImageGenerationProvider` boundary (a failing
+  provider marks the book `failed` with `failedStep: 'image_gen'` without
+  saving images/building layout/rendering a PDF).
 - `apps/api/src/agent/story-generation-provider.spec.ts` —
   `MockStoryGenerationProvider` in isolation: deterministic output for the
   same input, varies with `childName`/`theme`/`bookId`, and every required
   field is present on the returned `characterCard`, `storyPlan`,
   `bookPreview`, and `imageGenerationResult`.
 - `apps/api/src/agent/agent.service.local-pipeline.spec.ts` — the one test
-  in this file runs the **real** `generateMockImagePng` →
-  `LocalImageAssetStorage` → `buildImageBufferResolver` →
-  `renderStorybookPdf` chain (nothing mocked except `PrismaService` and
-  `PdfStorage`) and asserts the resulting PDF buffer is non-trivially sized
-  and contains a real `/Subtype /Image` object — proof that mock image bytes
-  are actually embedded end-to-end, not just that each boundary works in
-  isolation.
+  in this file runs the **real** `MockImageGenerationProvider` (wrapping
+  `generateMockImagePng`) → `LocalImageAssetStorage` →
+  `buildImageBufferResolver` → `renderStorybookPdf` chain (nothing mocked
+  except `PrismaService` and `PdfStorage`) and asserts the resulting PDF
+  buffer is non-trivially sized and contains a real `/Subtype /Image`
+  object — proof that mock image bytes are actually embedded end-to-end, not
+  just that each boundary works in isolation.
+- `apps/api/src/images/image-generation-provider.spec.ts` —
+  `MockImageGenerationProvider` in isolation: deterministic PNG bytes for the
+  same entry seed, different bytes for different seeds.
+- `apps/api/src/images/image-generation-provider.factory.spec.ts` —
+  `createImageGenerationProvider` provider selection (mock default,
+  explicit `mock`/`openai`, missing-`OPENAI_API_KEY` error, unknown-value
+  error).
+- `apps/api/src/images/openai-image-generation-provider.spec.ts` —
+  `buildImagePrompt` content, and `OpenAIImageGenerationProvider` request
+  shape, response mapping, and error paths (HTTP error, network failure,
+  missing `b64_json`) via an injected `fetchImpl` — no real network call.
 - `apps/api/src/images/image-asset-storage.spec.ts` and
   `apps/api/src/pdf/pdf-renderer.spec.ts` cover the storage and rendering
   boundaries directly, including the `/Subtype /Image` marker for a
@@ -297,9 +392,12 @@ alternatives instead).
 - **AI story generation** — `MockStoryGenerationProvider` (behind the
   `StoryGenerationProvider` boundary, see above) is hand-written templates,
   not an LLM call.
-- **AI image generation** — `generateMockImagePng` produces a solid-color
-  8×8 PNG swatch keyed by a deterministic hash of the entry's seed, not
-  artwork from an image model.
+- **AI image generation** — `MockImageGenerationProvider` (behind the
+  `ImageGenerationProvider` boundary, see above) wraps
+  `generateMockImagePng`, which produces a solid-color 8×8 PNG swatch keyed
+  by a deterministic hash of the entry's seed, not artwork from an image
+  model. A real `OpenAIImageGenerationProvider` exists but is only used when
+  `IMAGE_GENERATION_PROVIDER_TOKEN=openai` is explicitly set.
 - **Public image serving** — mock image bytes live only in
   `ImageAssetStorage` (local disk under `tmp/images/`) to be embedded into
   the PDF; nothing serves them over HTTP, and the `/mock-images/...` URLs
@@ -338,20 +436,15 @@ external AI or network calls happen at any point in this flow.
 
 ## How a future real-provider phase should slot in
 
-All three mock boundaries were built so a real provider drops in without
-touching callers:
+Both generation boundaries already have a real implementation, gated
+entirely behind explicit env selection (`STORY_GENERATION_PROVIDER=openai`,
+`IMAGE_GENERATION_PROVIDER_TOKEN=openai`) — the default and every test/CI
+run still use the mock providers with zero network calls. What's left:
 
-- **Real story generation**: implement `StoryGenerationProvider`
-  (`apps/api/src/agent/story-generation-provider.ts`) with real LLM calls
-  and swap the `useFactory` for `STORY_GENERATION_PROVIDER_TOKEN` in
-  `books.module.ts` — see "Story generation provider boundary" above.
-  `AgentService` and everything downstream do not need to change.
-- **Real image generation**: replace the call to `generateMockImagePng` in
-  `AgentService.saveMockImageAssets` with a real provider call, still saved
-  through `ImageAssetStorage.saveImageAsset`. No changes needed to
-  `buildImageBufferResolver` or `renderStorybookPdf` — see
-  `apps/api/docs/pdf-rendering.md` for the detailed boundary contract.
 - **Cloud storage**: `PdfStorage` already has a `CloudPdfStorage` (S3/R2)
   implementation behind `PDF_STORAGE_DRIVER`; `ImageAssetStorage` would need
   an equivalent cloud implementation following the same pattern before image
   bytes could live outside local disk.
+- **Public image serving**: mock/real image bytes still live only in
+  `ImageAssetStorage` for PDF embedding — nothing serves them over HTTP yet
+  (see "What's intentionally not real yet" above).

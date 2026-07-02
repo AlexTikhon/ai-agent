@@ -6,6 +6,10 @@ import { createMockPrisma } from '../common/test-utils/mock-prisma';
 import type { PdfStorage } from '../pdf/pdf-storage';
 import type { ImageAssetStorage } from '../images/image-asset-storage';
 import { MockStoryGenerationProvider, type StoryGenerationProvider } from './story-generation-provider';
+import {
+  MockImageGenerationProvider,
+  type ImageGenerationProvider,
+} from '../images/image-generation-provider';
 
 vi.mock('../pdf/pdf-renderer', () => ({
   renderStorybookPdf: vi.fn(),
@@ -86,6 +90,7 @@ describe('AgentService', () => {
       mockPdfStorage as unknown as PdfStorage,
       mockImageAssetStorage as unknown as ImageAssetStorage,
       new MockStoryGenerationProvider(),
+      new MockImageGenerationProvider(),
     );
     vi.mocked(renderStorybookPdf).mockResolvedValue(Buffer.from('%PDF-1.4 mock'));
     mockPdfStorage.savePreviewPdf.mockResolvedValue({
@@ -672,6 +677,75 @@ describe('AgentService', () => {
       warnSpy.mockRestore();
     });
 
+    // ── Phase 3C: ImageGenerationProvider boundary ────────────────────────────
+
+    describe('when the image generation provider fails', () => {
+      function makeFailingImageService(errorMessage: string) {
+        const failingImageProvider: ImageGenerationProvider = {
+          generateImage: vi.fn().mockRejectedValue(new Error(errorMessage)),
+        };
+        return new AgentService(
+          prisma as never,
+          mockPdfStorage as unknown as PdfStorage,
+          mockImageAssetStorage as unknown as ImageAssetStorage,
+          new MockStoryGenerationProvider(),
+          failingImageProvider,
+        );
+      }
+
+      it('marks the book as failed with the provider error message and failedStep image_gen', async () => {
+        const book = makeBook();
+        const failedBook = makeBook({ status: 'failed' as Book['status'] });
+        prisma.book.update.mockResolvedValueOnce(failedBook);
+        prisma.agentLog.createMany.mockResolvedValue({ count: 1 });
+        const failingService = makeFailingImageService('OpenAI image request failed');
+
+        const result = await failingService.startBookGeneration(book);
+
+        expect(result).toBe(failedBook);
+        expect(prisma.book.update).toHaveBeenCalledWith({
+          where: { id: 'b-1' },
+          data: {
+            status: 'failed',
+            errorMessage: 'OpenAI image request failed',
+            failedStep: 'image_gen',
+          },
+        });
+      });
+
+      it('does not save image assets, build layout, or render a PDF', async () => {
+        const book = makeBook();
+        prisma.book.update.mockResolvedValueOnce(makeBook({ status: 'failed' as Book['status'] }));
+        prisma.agentLog.createMany.mockResolvedValue({ count: 1 });
+        const failingService = makeFailingImageService('boom');
+
+        await failingService.startBookGeneration(book);
+
+        expect(mockImageAssetStorage.saveImageAsset).not.toHaveBeenCalled();
+        expect(renderStorybookPdf).not.toHaveBeenCalled();
+        expect(mockPdfStorage.savePreviewPdf).not.toHaveBeenCalled();
+        expect(prisma.book.update).toHaveBeenCalledOnce();
+      });
+
+      it('writes a single image_gen AgentLog entry with status error', async () => {
+        const book = makeBook();
+        prisma.book.update.mockResolvedValueOnce(makeBook({ status: 'failed' as Book['status'] }));
+        prisma.agentLog.createMany.mockResolvedValue({ count: 1 });
+        const failingService = makeFailingImageService('bad request');
+
+        await failingService.startBookGeneration(book);
+
+        expect(prisma.agentLog.createMany).toHaveBeenCalledOnce();
+        const entries = prisma.agentLog.createMany.mock.calls[0]?.[0]?.data as Array<
+          Record<string, unknown>
+        >;
+        expect(entries).toHaveLength(1);
+        expect(entries[0]?.step).toBe('image_gen');
+        expect(entries[0]?.status).toBe('error');
+        expect(entries[0]?.error).toBe('bad request');
+      });
+    });
+
     // ── Phase 2H: Layout engine ───────────────────────────────────────────────
 
     it('stores bookLayout in the book update', async () => {
@@ -1102,6 +1176,7 @@ describe('AgentService', () => {
           mockPdfStorage as unknown as PdfStorage,
           mockImageAssetStorage as unknown as ImageAssetStorage,
           failingProvider,
+          new MockImageGenerationProvider(),
         );
       }
 
@@ -1170,6 +1245,7 @@ describe('AgentService', () => {
           mockPdfStorage as unknown as PdfStorage,
           mockImageAssetStorage as unknown as ImageAssetStorage,
           { generateStory },
+          new MockImageGenerationProvider(),
         );
 
         await spyingService.startBookGeneration(book);

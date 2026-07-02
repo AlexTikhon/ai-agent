@@ -8,6 +8,7 @@ import { createMockPrisma } from '../common/test-utils/mock-prisma';
 import { LocalImageAssetStorage } from '../images/image-asset-storage';
 import type { PdfStorage } from '../pdf/pdf-storage';
 import { MockStoryGenerationProvider } from './story-generation-provider';
+import { MockImageGenerationProvider } from '../images/image-generation-provider';
 
 // This file deliberately does NOT mock '../pdf/pdf-renderer' or
 // '../images/image-asset-storage' — it drives AgentService.startBookGeneration
@@ -98,6 +99,7 @@ describe('AgentService local pipeline (real image storage + real PDF renderer)',
       pdfStorage as PdfStorage,
       new LocalImageAssetStorage(),
       new MockStoryGenerationProvider(),
+      new MockImageGenerationProvider(),
     );
 
     const book = makeBook();
