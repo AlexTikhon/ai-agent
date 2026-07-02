@@ -133,7 +133,9 @@ export function renderStorybookPdf(layout: BookLayout): Promise<Buffer> {
       doc.addPage({ size: [PAGE_PT, PAGE_PT] });
       try {
         renderPage(doc, entry);
-      } catch {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[pdf-renderer] Failed to render entry "${entry.id}" (${entry.kind}): ${message}`);
         doc
           .fillColor('#CC0000')
           .font('Helvetica')

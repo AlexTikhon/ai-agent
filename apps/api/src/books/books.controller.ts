@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -43,14 +44,17 @@ export class BooksController {
   }
 
   @Get(':id')
-  findOne(@CurrentUser() user: User, @Param('id') id: string): Promise<BookDto> {
+  findOne(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<BookDto> {
     return this.booksService.findOneForUser(id, user.id);
   }
 
   @Patch(':id')
   update(
     @CurrentUser() user: User,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateBookDto,
   ): Promise<BookDto> {
     return this.booksService.update(id, user.id, dto);
@@ -59,7 +63,7 @@ export class BooksController {
   @Get(':id/pdf/preview')
   async getPreviewPdf(
     @CurrentUser() user: User,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     const result = await this.booksService.getPreviewPdfBuffer(id, user.id);
@@ -73,13 +77,16 @@ export class BooksController {
 
   @Post(':id/generate')
   @HttpCode(200)
-  generate(@CurrentUser() user: User, @Param('id') id: string): Promise<GenerateBookResponse> {
+  generate(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<GenerateBookResponse> {
     return this.booksService.startGeneration(user.id, id);
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@CurrentUser() user: User, @Param('id') id: string): Promise<void> {
+  remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.booksService.remove(id, user.id);
   }
 }

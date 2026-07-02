@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderStorybookPdf } from './pdf-renderer';
 import { wrapText } from './text-wrap';
 import type { BookLayout, BookLayoutEntry } from '@book/types';
@@ -253,5 +253,29 @@ describe('renderStorybookPdf', () => {
     const raw = buf.toString('latin1');
     expect(raw).toContain('StoryMe PDF Renderer');
     expect(raw).toContain('Test Book');
+  });
+
+  it('degrades to a red error page (instead of crashing) when an entry has a malformed box', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const brokenEntry = makeCoverEntry({
+        imageBlock: {
+          box: undefined as never,
+          imageUrl: '/mock-images/test/cover.svg',
+          altText: 'Cover illustration',
+          objectFit: 'cover',
+        },
+      });
+      const layout = makeLayout([brokenEntry]);
+
+      const buf = await renderStorybookPdf(layout);
+
+      expect(buf.slice(0, 5).toString('ascii')).toBe('%PDF-');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`Failed to render entry "${brokenEntry.id}"`),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
