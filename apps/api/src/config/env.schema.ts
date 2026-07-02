@@ -35,6 +35,12 @@ export const envSchema = z.object({
 
   // PDF storage
   PDF_STORAGE_DRIVER: z.enum(['local', 's3', 'r2']).default('local'),
+  PDF_STORAGE_BUCKET: z.string().optional(),
+  PDF_STORAGE_REGION: z.string().optional(),
+  PDF_STORAGE_ENDPOINT: z.string().url().optional(),
+  PDF_STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  PDF_STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  PDF_STORAGE_FORCE_PATH_STYLE: z.enum(['true', 'false']).optional(),
 
   // Stripe (optional in dev)
   STRIPE_SECRET_KEY: z.string().optional(),

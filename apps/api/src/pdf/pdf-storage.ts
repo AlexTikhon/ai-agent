@@ -1,6 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+} from '@aws-sdk/client-s3';
 
 const TMP_ROOT = resolve(__dirname, '..', '..', 'tmp');
 
@@ -66,45 +72,150 @@ export class LocalPdfStorage implements PdfStorage {
   }
 }
 
+export interface CloudPdfStorageConfig {
+  driver: 's3' | 'r2';
+  bucket: string;
+  region: string;
+  endpoint?: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  forcePathStyle?: boolean;
+}
+
+function objectKey(bookId: string): string {
+  return `previews/${bookId}/storyme-preview-${bookId}.pdf`;
+}
+
+/** True for the S3-shaped "object not found" errors returned by GetObject/HeadObject. */
+function isNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  if (name === 'NoSuchKey' || name === 'NotFound') return true;
+  const statusCode = (err as { $metadata?: { httpStatusCode?: number } }).$metadata
+    ?.httpStatusCode;
+  return statusCode === 404;
+}
+
+/** GetObject's Body is a Node.js Readable augmented with SDK helpers; normalize to a Buffer. */
+async function bodyToBuffer(body: unknown): Promise<Buffer> {
+  const withByteArray = body as { transformToByteArray?: () => Promise<Uint8Array> };
+  if (typeof withByteArray.transformToByteArray === 'function') {
+    return Buffer.from(await withByteArray.transformToByteArray());
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Buffer | Uint8Array>) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
 /**
- * Scaffold for a future S3/R2-backed driver. Constructing it is safe (no network
- * calls); every operation throws until the real upload/download logic lands.
- * Not wired into {@link createPdfStorage} yet — kept separate so introducing the
- * real implementation later only touches this class.
+ * S3-compatible object storage driver (AWS S3 or Cloudflare R2). Object layout:
+ * previews/<bookId>/storyme-preview-<bookId>.pdf
  */
 export class CloudPdfStorage implements PdfStorage {
-  constructor(private readonly driver: 's3' | 'r2') {}
+  private readonly client: S3Client;
+  private readonly bucket: string;
 
-  private notImplemented(): never {
-    throw new Error(`CloudPdfStorage driver "${this.driver}" is not implemented yet`);
+  constructor(config: CloudPdfStorageConfig) {
+    this.bucket = config.bucket;
+    this.client = new S3Client({
+      region: config.region,
+      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+      forcePathStyle: config.forcePathStyle ?? Boolean(config.endpoint),
+      credentials: {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+      },
+    });
   }
 
-  async savePreviewPdf(): Promise<{ url: string; path?: string }> {
-    this.notImplemented();
+  async savePreviewPdf(bookId: string, buffer: Buffer): Promise<{ url: string; path?: string }> {
+    validateBookId(bookId);
+    const key = objectKey(bookId);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: 'application/pdf',
+      }),
+    );
+    return { url: key };
   }
 
-  async getPreviewPdf(): Promise<{
+  async getPreviewPdf(bookId: string): Promise<{
     buffer: Buffer;
     contentType: 'application/pdf';
     filename: string;
   } | null> {
-    this.notImplemented();
+    validateBookId(bookId);
+    const key = objectKey(bookId);
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      const buffer = await bodyToBuffer(result.Body);
+      return { buffer, contentType: 'application/pdf', filename: `storyme-preview-${bookId}.pdf` };
+    } catch (err) {
+      if (isNotFoundError(err)) return null;
+      throw err;
+    }
   }
 
-  async previewPdfExists(): Promise<boolean> {
-    this.notImplemented();
+  async previewPdfExists(bookId: string): Promise<boolean> {
+    validateBookId(bookId);
+    const key = objectKey(bookId);
+    try {
+      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return true;
+    } catch (err) {
+      if (isNotFoundError(err)) return false;
+      throw err;
+    }
   }
+}
+
+const CLOUD_REQUIRED_VARS = [
+  'PDF_STORAGE_BUCKET',
+  'PDF_STORAGE_REGION',
+  'PDF_STORAGE_ACCESS_KEY_ID',
+  'PDF_STORAGE_SECRET_ACCESS_KEY',
+] as const;
+
+/** Reads and validates the PDF_STORAGE_* env vars required for the s3/r2 drivers. */
+function readCloudConfig(driver: 's3' | 'r2', env: NodeJS.ProcessEnv): CloudPdfStorageConfig {
+  const missing: string[] = CLOUD_REQUIRED_VARS.filter((key) => !env[key]);
+  const endpoint = env['PDF_STORAGE_ENDPOINT'];
+  // R2 has no default endpoint the SDK can infer, unlike S3.
+  if (driver === 'r2' && !endpoint) missing.push('PDF_STORAGE_ENDPOINT');
+  if (missing.length > 0) {
+    throw new Error(
+      `PDF_STORAGE_DRIVER "${driver}" requires the following environment variable(s): ${missing.join(', ')}`,
+    );
+  }
+  const forcePathStyleRaw = env['PDF_STORAGE_FORCE_PATH_STYLE'];
+  return {
+    driver,
+    bucket: env['PDF_STORAGE_BUCKET']!,
+    region: env['PDF_STORAGE_REGION']!,
+    ...(endpoint ? { endpoint } : {}),
+    accessKeyId: env['PDF_STORAGE_ACCESS_KEY_ID']!,
+    secretAccessKey: env['PDF_STORAGE_SECRET_ACCESS_KEY']!,
+    forcePathStyle: forcePathStyleRaw ? forcePathStyleRaw === 'true' : Boolean(endpoint),
+  };
 }
 
 /**
  * Returns the configured PdfStorage implementation.
- * Supported drivers: local (default).
- * S3/R2 drivers are recognized but not yet implemented — set PDF_STORAGE_DRIVER=local
- * or omit the variable. See {@link CloudPdfStorage} for the future scaffold.
+ * Supported drivers: local (default), s3, r2.
  */
-export function createPdfStorage(driver = 'local'): PdfStorage {
+export function createPdfStorage(driver = 'local', env: NodeJS.ProcessEnv = process.env): PdfStorage {
   if (driver === 'local') return new LocalPdfStorage();
+  if (driver === 's3' || driver === 'r2') {
+    return new CloudPdfStorage(readCloudConfig(driver, env));
+  }
   throw new Error(
-    `PDF_STORAGE_DRIVER "${driver}" is not implemented yet. Supported drivers: local`,
+    `PDF_STORAGE_DRIVER "${driver}" is not implemented yet. Supported drivers: local, s3, r2`,
   );
 }
