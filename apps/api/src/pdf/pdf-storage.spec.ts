@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { rm } from 'node:fs/promises';
-import { LocalPdfStorage, createPdfStorage } from './pdf-storage';
+import { LocalPdfStorage, CloudPdfStorage, createPdfStorage } from './pdf-storage';
 
 const TEST_BOOK_ID = 'test-pdf-storage-spec-001';
 const TEST_DIR = resolve(process.cwd(), 'tmp', 'books', TEST_BOOK_ID);
@@ -122,6 +122,63 @@ describe('LocalPdfStorage.getPreviewPdf', () => {
   it('rejects for bookIds containing path-traversal characters', async () => {
     await expect(storage.getPreviewPdf('../evil')).rejects.toThrow();
     await expect(storage.getPreviewPdf('foo/bar')).rejects.toThrow();
+  });
+});
+
+describe('LocalPdfStorage.previewPdfExists', () => {
+  let storage: LocalPdfStorage;
+
+  beforeEach(() => {
+    storage = new LocalPdfStorage();
+  });
+
+  afterEach(async () => {
+    if (existsSync(TEST_DIR)) {
+      await rm(TEST_DIR, { recursive: true });
+    }
+  });
+
+  it('returns false when no preview has been saved', async () => {
+    await expect(storage.previewPdfExists(TEST_BOOK_ID)).resolves.toBe(false);
+  });
+
+  it('returns true after a preview has been saved', async () => {
+    await storage.savePreviewPdf(TEST_BOOK_ID, Buffer.from('%PDF'));
+    await expect(storage.previewPdfExists(TEST_BOOK_ID)).resolves.toBe(true);
+  });
+
+  it('rejects for bookIds containing path-traversal characters', async () => {
+    await expect(storage.previewPdfExists('../evil')).rejects.toThrow();
+    await expect(storage.previewPdfExists('foo/bar')).rejects.toThrow();
+  });
+});
+
+describe('CloudPdfStorage', () => {
+  it('constructs without making any network calls', () => {
+    expect(() => new CloudPdfStorage('s3')).not.toThrow();
+    expect(() => new CloudPdfStorage('r2')).not.toThrow();
+  });
+
+  it('throws "not implemented" for savePreviewPdf', async () => {
+    const storage = new CloudPdfStorage('s3');
+    await expect(storage.savePreviewPdf('book-1', Buffer.from('%PDF'))).rejects.toThrow(
+      /not implemented yet/,
+    );
+  });
+
+  it('throws "not implemented" for getPreviewPdf', async () => {
+    const storage = new CloudPdfStorage('r2');
+    await expect(storage.getPreviewPdf('book-1')).rejects.toThrow(/not implemented yet/);
+  });
+
+  it('throws "not implemented" for previewPdfExists', async () => {
+    const storage = new CloudPdfStorage('s3');
+    await expect(storage.previewPdfExists('book-1')).rejects.toThrow(/not implemented yet/);
+  });
+
+  it('error message names the configured driver', async () => {
+    const storage = new CloudPdfStorage('r2');
+    await expect(storage.getPreviewPdf('book-1')).rejects.toThrow(/"r2"/);
   });
 });
 

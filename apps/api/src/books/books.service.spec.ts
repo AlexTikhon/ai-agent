@@ -18,6 +18,7 @@ function createMockPdfStorage(): jest.Mocked<PdfStorage> {
   return {
     savePreviewPdf: vi.fn(),
     getPreviewPdf: vi.fn(),
+    previewPdfExists: vi.fn(),
   } as unknown as jest.Mocked<PdfStorage>;
 }
 
