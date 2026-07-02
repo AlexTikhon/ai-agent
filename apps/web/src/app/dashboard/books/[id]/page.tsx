@@ -17,6 +17,7 @@ import type {
 } from '@book/types';
 import { booksApi } from '@/lib/api/books';
 import { ApiError } from '@/lib/api/client';
+import { resolveAssetUrl } from '@/lib/api/asset-url';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -435,6 +436,8 @@ function BookDetailView({
       {imageGenerationResult && <ImageGenerationSection result={imageGenerationResult} />}
 
       {bookLayout && <BookLayoutSection layout={bookLayout} />}
+
+      <PdfSection book={book} />
 
       {!isDraft && (
         <p className="mb-4 rounded-lg bg-violet-50 px-4 py-3 text-sm text-violet-700">
@@ -857,6 +860,73 @@ function EditFormFields({ values, onChange, submitting, onCancel }: EditFormFiel
       </div>
     </>
   );
+}
+
+// ── PdfSection ────────────────────────────────────────────────────────────────
+
+function PdfSection({ book }: { book: BookDto }) {
+  const pdfUrl = book.previewPdfUrl ? resolveAssetUrl(book.previewPdfUrl) : null;
+
+  if (book.status === BookStatus.PdfRender) {
+    return (
+      <div className="mb-6 rounded-xl border border-violet-100 bg-violet-50 p-4">
+        <h2 className="mb-1 font-display text-base font-semibold text-violet-800">
+          Rendering PDF…
+        </h2>
+        <p className="text-sm text-violet-700">
+          Your storybook PDF is being assembled. This usually takes a few seconds.
+        </p>
+      </div>
+    );
+  }
+
+  if (book.status === BookStatus.Complete) {
+    if (pdfUrl) {
+      return (
+        <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <h2 className="mb-1 font-display text-base font-semibold text-emerald-800">
+            Your PDF is ready
+          </h2>
+          <p className="mb-4 text-xs text-emerald-600">Preview PDF · locally generated file</p>
+          <div className="flex gap-3">
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-brand transition-all hover:bg-violet-500"
+            >
+              Open PDF
+            </a>
+            <a
+              href={pdfUrl}
+              download="storyme-book.pdf"
+              className="inline-flex h-9 items-center rounded-xl border border-border-default px-4 text-sm font-semibold text-text-secondary transition-all hover:bg-stone-100"
+            >
+              Download PDF
+            </a>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mb-6 rounded-xl border border-stone-200 bg-stone-50 p-4">
+        <p className="text-sm text-text-muted">
+          Book is complete, but PDF link is not available yet.
+        </p>
+      </div>
+    );
+  }
+
+  if (book.status === BookStatus.Failed) {
+    return (
+      <div className="mb-6 rounded-xl border border-danger-base/20 bg-danger-light p-4">
+        <p className="text-sm text-danger-base">Generation failed. Please contact support.</p>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ── Skeleton / Not Found ──────────────────────────────────────────────────────

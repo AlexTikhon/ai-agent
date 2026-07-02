@@ -1133,4 +1133,147 @@ describe('BookDetailPage', () => {
       expect(screen.queryByRole('heading', { name: /images are ready/i })).toBeNull();
     });
   });
+
+  // ── PDF section ───────────────────────────────────────────────────────────
+
+  it('shows "Your PDF is ready" heading and Open/Download links when status is complete with previewPdfUrl', async () => {
+    const completeBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Complete,
+      previewPdfUrl: '/files/books/book-1/storybook.pdf',
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(completeBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /your pdf is ready/i })).toBeDefined();
+      expect(screen.getByRole('link', { name: /open pdf/i })).toBeDefined();
+      expect(screen.getByRole('link', { name: /download pdf/i })).toBeDefined();
+    });
+  });
+
+  it('Open PDF link resolves the relative previewPdfUrl against the API origin', async () => {
+    const completeBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Complete,
+      previewPdfUrl: '/files/books/book-1/storybook.pdf',
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(completeBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: /open pdf/i }) as HTMLAnchorElement;
+      expect(link.getAttribute('href')).toBe(
+        'http://localhost:4000/files/books/book-1/storybook.pdf',
+      );
+    });
+  });
+
+  it('Download PDF link has the storyme-book.pdf download attribute', async () => {
+    const completeBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Complete,
+      previewPdfUrl: '/files/books/book-1/storybook.pdf',
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(completeBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: /download pdf/i }) as HTMLAnchorElement;
+      expect(link.download).toBe('storyme-book.pdf');
+    });
+  });
+
+  it('shows "Rendering PDF…" heading when status is pdf_render', async () => {
+    const pdfRenderBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.PdfRender,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(pdfRenderBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /rendering pdf/i })).toBeDefined();
+    });
+  });
+
+  it('shows "Your storybook PDF is being assembled" description when status is pdf_render', async () => {
+    const pdfRenderBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.PdfRender,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(pdfRenderBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/your storybook pdf is being assembled/i)).toBeDefined();
+    });
+  });
+
+  it('shows fallback text when status is complete but previewPdfUrl is null', async () => {
+    const completeNoUrl: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Complete,
+      previewPdfUrl: null,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(completeNoUrl));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/book is complete, but pdf link is not available yet/i),
+      ).toBeDefined();
+    });
+  });
+
+  it('does not show Open PDF or Download PDF links when complete without previewPdfUrl', async () => {
+    const completeNoUrl: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Complete,
+      previewPdfUrl: null,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(completeNoUrl));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: /open pdf/i })).toBeNull();
+      expect(screen.queryByRole('link', { name: /download pdf/i })).toBeNull();
+    });
+  });
+
+  it('shows generation failed message when status is failed', async () => {
+    const failedBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.Failed,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(failedBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/generation failed/i)).toBeDefined();
+    });
+  });
+
+  it('does not show PDF section for in-progress statuses like image_gen', async () => {
+    const imageGenBook: BookDto = {
+      ...MOCK_BOOK,
+      status: BookStatus.ImageGen,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(mockOk(imageGenBook));
+
+    render(<BookDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /your pdf is ready/i })).toBeNull();
+      expect(screen.queryByRole('heading', { name: /rendering pdf/i })).toBeNull();
+    });
+  });
 });
