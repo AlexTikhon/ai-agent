@@ -5,10 +5,8 @@ import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
 import { createPdfStorage, PDF_STORAGE_TOKEN } from '../pdf/pdf-storage';
 import { IMAGE_ASSET_STORAGE_TOKEN, LocalImageAssetStorage } from '../images/image-asset-storage';
-import {
-  MockStoryGenerationProvider,
-  STORY_GENERATION_PROVIDER_TOKEN,
-} from '../agent/story-generation-provider';
+import { STORY_GENERATION_PROVIDER_TOKEN } from '../agent/story-generation-provider';
+import { createStoryGenerationProvider } from '../agent/story-generation-provider.factory';
 
 @Module({
   imports: [AuthModule],
@@ -24,7 +22,7 @@ import {
     },
     {
       provide: STORY_GENERATION_PROVIDER_TOKEN,
-      useFactory: () => new MockStoryGenerationProvider(),
+      useFactory: () => createStoryGenerationProvider(),
     },
     BooksService,
     AgentService,

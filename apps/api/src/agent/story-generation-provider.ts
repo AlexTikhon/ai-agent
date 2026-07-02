@@ -184,7 +184,7 @@ function buildIllustrationPlan(
 
 const PAGE_LAYOUTS = ['image_top_text_bottom', 'text_left_image_right'] as const;
 
-function buildBookPreview(
+export function buildBookPreview(
   childProfile: { childName: string; childAge: number; language: string },
   characterCard: CharacterCard,
   storyPlanFinal: StoryPlan & {
@@ -228,7 +228,7 @@ function buildBookPreview(
   };
 }
 
-function buildImageGenerationResult(
+export function buildImageGenerationResult(
   bookId: string,
   bookPreview: BookPreview,
 ): ImageGenerationResult {

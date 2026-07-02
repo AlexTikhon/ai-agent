@@ -143,15 +143,66 @@ interface StoryGenerationProvider {
   `AgentLog` row with `status: 'error'`, and returns — no image assets are
   saved, no layout is built, no PDF is rendered or stored.
 
-### How a future real-LLM provider should slot in
+### Real LLM provider (`OpenAIStoryGenerationProvider`)
 
-Implement `StoryGenerationProvider` with a class that calls a real LLM (e.g.
-`RealStoryGenerationProvider`), returning the exact same
-`StoryGenerationResult` shape `MockStoryGenerationProvider` returns today, and
-swap the `useFactory` for `STORY_GENERATION_PROVIDER_TOKEN` in
-`books.module.ts`. `AgentService` and everything downstream (image asset
-saving, layout, PDF render, storage) need no changes — they only depend on
-the interface, not on how the result was produced.
+`apps/api/src/agent/openai-story-generation-provider.ts` implements
+`StoryGenerationProvider` with a real OpenAI chat-completions call, gated
+entirely behind explicit env selection — the default and every test/CI run
+still use `MockStoryGenerationProvider` with zero network calls.
+
+- **Provider selection** — `apps/api/src/agent/story-generation-provider.factory.ts`
+  exports `createStoryGenerationProvider(env = process.env)`, wired into
+  `books.module.ts`'s `useFactory` for `STORY_GENERATION_PROVIDER_TOKEN`:
+  - `STORY_GENERATION_PROVIDER` unset, empty, or `"mock"` → `MockStoryGenerationProvider`.
+  - `STORY_GENERATION_PROVIDER=openai` → `OpenAIStoryGenerationProvider`,
+    constructed with `OPENAI_API_KEY` (required — throws a clear
+    `Error` at provider-construction time if missing) and optional
+    `OPENAI_MODEL` (defaults to `gpt-4o-mini`).
+  - Any other value throws a clear `Error` naming the invalid value.
+- **Prompt** — `buildStoryGenerationPrompt(input, targetPageCount)` is a pure
+  function (no network) returning `{ system, user }` messages. It embeds
+  `childName`, `childAge`, `theme`, `language`, and the target page count
+  (default 6, matching the mock's 6-page output), and instructs the model to
+  return strict JSON only, write in age-appropriate simple language, avoid
+  violent/scary/copyrighted content, and include one `illustrationPrompt` per
+  page for a future image-generation model.
+- **Call** — sends `POST {baseUrl}/chat/completions` (default
+  `https://api.openai.com/v1`) with `response_format: { type: 'json_object' }`
+  via an injectable `fetchImpl` (defaults to the Node global `fetch`) — no new
+  HTTP/OpenAI SDK dependency was added; tests inject a mock `fetchImpl` so no
+  real network call ever happens in the suite.
+- **Validation** — the model's JSON content is parsed and validated with a
+  `zod` schema (`zod` was already a dependency) requiring `title`,
+  `theme`, `educationalMessage`, `openingHook`, `resolution`, a
+  `characterCard` with `visualAnchor`/`narrativeDescription`, and 4–12
+  `pages` each with non-empty `title`/`sceneDescription`/`storyText`
+  (max 1000 chars)/`illustrationPrompt`/`learningGoal`. Any parse failure or
+  schema mismatch throws `StoryGenerationProviderError` with a clear message
+  — raw model output never reaches `AgentService`.
+- **Mapping** — validated output is mapped into the exact
+  `StoryGenerationResult` shape `MockStoryGenerationProvider` returns:
+  chapters/pages/illustration plans are synthesized around the LLM's
+  per-page content (2 pages per chapter, same illustration-prompt/negative-
+  prompt/consistency-notes pattern as the mock), then the shared
+  `buildBookPreview` and `buildImageGenerationResult` helpers (exported from
+  `story-generation-provider.ts` for reuse here) build `bookPreview` and
+  `imageGenerationResult` identically to the mock path — including
+  `imageGenerationResult.provider: 'local_mock'`, since real image
+  generation still doesn't exist (see "What's intentionally not real yet").
+  **Known limitation**: `characterCard.appearance`/`personality` are still
+  fixed placeholders, not LLM-generated — only `visualAnchor` and
+  `narrativeDescription` come from the model. This keeps the prompt/schema
+  focused on story content; a future phase could ask the model for full
+  appearance/personality too.
+- **Failure path** — any thrown `StoryGenerationProviderError` (or provider
+  construction error) is caught by `AgentService` exactly like a mock
+  provider failure: book marked `failed`, `failedStep: 'story_plan'`, one
+  `story_plan` `AgentLog` row written, nothing downstream runs.
+
+To try it locally: set `STORY_GENERATION_PROVIDER=openai` and `OPENAI_API_KEY`
+in `apps/api/.env`, then run `pnpm --filter @book/api dev` and generate a book
+as usual. **CI and the test suite never do this** — they always run with the
+default mock provider.
 
 ## Status transitions
 
